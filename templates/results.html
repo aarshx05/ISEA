@@ -21,7 +21,7 @@
   </div>
   <div class="flex items-center gap-2">
     <a href="/chat/{{ scan_id }}"
-       class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+      class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
           d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -41,13 +41,14 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
         </svg>
       </button>
-      <div id="dl-menu" class="hidden absolute right-0 mt-1 bg-white rounded-lg border border-slate-200 shadow-lg w-40 z-10">
+      <div id="dl-menu"
+        class="hidden absolute right-0 mt-1 bg-white rounded-lg border border-slate-200 shadow-lg w-40 z-10">
         <a href="/api/report/{{ scan_id }}/json"
-           class="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 rounded-t-lg">
+          class="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 rounded-t-lg">
           <span class="font-mono text-xs text-blue-600">JSON</span> Evidence Report
         </a>
         <a href="/api/report/{{ scan_id }}/markdown"
-           class="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 rounded-b-lg border-t border-slate-100">
+          class="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 rounded-b-lg border-t border-slate-100">
           <span class="font-mono text-xs text-slate-500">MD</span> Forensic Report
         </a>
       </div>
@@ -63,13 +64,11 @@
     <div class="flex flex-col items-center flex-shrink-0">
       <div class="relative flex items-center justify-center" style="width:120px;height:120px">
         <svg class="w-full h-full -rotate-90" viewBox="0 0 120 120">
-          <circle cx="60" cy="60" r="48" fill="none" stroke="#e2e8f0" stroke-width="10"/>
+          <circle cx="60" cy="60" r="48" fill="none" stroke="#e2e8f0" stroke-width="10" />
           <circle id="score-arc" cx="60" cy="60" r="48" fill="none"
             stroke="{{ '#dc2626' if r.evidence_score >= 75 else ('#f97316' if r.evidence_score >= 50 else ('#f59e0b' if r.evidence_score >= 25 else '#22c55e')) }}"
-            stroke-width="10"
-            stroke-dasharray="301.6"
-            stroke-dashoffset="{{ 301.6 * (1 - r.evidence_score / 100) }}"
-            stroke-linecap="round"/>
+            stroke-width="10" stroke-dasharray="301.6" stroke-dashoffset="{{ 301.6 * (1 - r.evidence_score / 100) }}"
+            stroke-linecap="round" />
         </svg>
         <div class="absolute text-center">
           <div class="text-2xl font-bold text-slate-800">{{ r.evidence_score | int }}</div>
@@ -96,9 +95,12 @@
       </div>
       <div>
         <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Evidence</div>
-        {% set strength_map = {'STRONG': ('bg-blue-600 text-white', 'STRONG'), 'PROBABLE': ('bg-blue-400 text-white', 'PROBABLE'), 'POSSIBLE': ('bg-slate-400 text-white', 'POSSIBLE'), 'INSUFFICIENT': ('bg-slate-200 text-slate-600', 'INSUFFICIENT')} %}
+        {% set strength_map = {'STRONG': ('bg-blue-600 text-white', 'STRONG'), 'PROBABLE': ('bg-blue-400 text-white',
+        'PROBABLE'), 'POSSIBLE': ('bg-slate-400 text-white', 'POSSIBLE'), 'INSUFFICIENT': ('bg-slate-200
+        text-slate-600', 'INSUFFICIENT')} %}
         {% set ev_score = r.evidence_score %}
-        {% set strength = 'STRONG' if ev_score >= 75 else ('PROBABLE' if ev_score >= 50 else ('POSSIBLE' if ev_score >= 25 else 'INSUFFICIENT')) %}
+        {% set strength = 'STRONG' if ev_score >= 75 else ('PROBABLE' if ev_score >= 50 else ('POSSIBLE' if ev_score >=
+        25 else 'INSUFFICIENT')) %}
         <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold
           {% if strength == 'STRONG' %}bg-blue-600 text-white
           {% elif strength == 'PROBABLE' %}bg-blue-400 text-white
@@ -109,7 +111,8 @@
       </div>
       <div>
         <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Wipe Regions</div>
-        <div class="text-2xl font-bold {% if r.wipe_detections|length > 0 %}text-red-600{% else %}text-green-600{% endif %}">
+        <div
+          class="text-2xl font-bold {% if r.wipe_detections|length > 0 %}text-red-600{% else %}text-green-600{% endif %}">
           {{ r.wipe_detections|length }}
         </div>
       </div>
@@ -127,6 +130,56 @@
   <div class="mt-5 pt-5 border-t border-slate-100">
     <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">AI Analyst Hypothesis</div>
     <p class="text-slate-700 text-sm leading-relaxed">{{ intent.hypothesis }}</p>
+
+    {% if intent.investigator_questions %}
+    <div class="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+      <div class="flex items-start">
+        <svg class="w-5 h-5 text-amber-500 mt-0.5 mr-3 flex-shrink-0" fill="none" viewBox="0 0 24 24"
+          stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div>
+          <h4 class="text-sm font-semibold text-amber-800 mb-1.5">Investigator Context Required</h4>
+          <p class="text-xs text-amber-700 mb-2">The AI Analyst lacks context to finalize this evidence. Please
+            investigate:</p>
+          <ul class="list-disc list-inside text-sm text-amber-800 space-y-1 ml-1 cursor-pointer"
+            onclick="window.location.href='/chat/{{ scan_id }}'">
+            {% for q in intent.investigator_questions %}
+            <li class="hover:underline">{{ q }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Agent Activity Log History -->
+    {% if r.activity_log and r.activity_log|length > 0 %}
+    <div class="mt-6 border border-slate-200 rounded-lg overflow-hidden">
+      <div class="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex justify-between items-center cursor-pointer"
+        onclick="document.getElementById('agent-log-content').classList.toggle('hidden')">
+        <h4 class="text-sm font-semibold text-slate-700">AI Analyst Thought Process</h4>
+        <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
+      <div id="agent-log-content" class="hidden bg-slate-900 border-t border-slate-200 p-4 max-h-96 overflow-y-auto">
+        <div class="space-y-3 font-mono text-sm text-left">
+          {% for log in r.activity_log %}
+          {% if log.actor == 'AI Analyst' %}
+          <div class="text-blue-400"><span class="text-slate-500">[AI Analyst]</span> {{ log.text }}</div>
+          {% elif log.actor == 'AI Request' %}
+          <div class="text-amber-400 font-semibold"><span class="text-amber-600">[AI Request]</span> {{ log.text }}
+          </div>
+          {% elif log.actor == 'Human Investigator' %}
+          <div class="text-green-400"><span class="text-green-600">[Investigator]</span> {{ log.text }}</div>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 </div>
@@ -135,9 +188,9 @@
 <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
   <!-- Tab bar -->
   <div class="flex border-b border-slate-200 overflow-x-auto">
-    {% for tab_id, tab_label in [('overview','Overview'), ('wipe-regions','Wipe Regions'), ('intent','Intent Analysis'), ('tool','Tool Classification'), ('report','Full Report')] %}
-    <button onclick="switchTab('{{ tab_id }}')"
-      id="tab-btn-{{ tab_id }}"
+    {% for tab_id, tab_label in [('overview','Overview'), ('wipe-regions','Wipe Regions'), ('intent','Intent Analysis'),
+    ('tool','Tool Classification'), ('report','Full Report')] %}
+    <button onclick="switchTab('{{ tab_id }}')" id="tab-btn-{{ tab_id }}"
       class="tab-btn px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors
         {% if loop.first %}text-blue-600 border-blue-600{% else %}text-slate-500 border-transparent hover:text-slate-700{% endif %}">
       {{ tab_label }}
@@ -149,10 +202,10 @@
   <div id="tab-overview" class="tab-panel p-6">
     <div class="grid grid-cols-4 gap-4 mb-6">
       {% for label, value in [
-        ('Image Size', r.image_size_mb|string + ' MB'),
-        ('Total Clusters', '{:,}'.format(r.total_clusters)),
-        ('Analyzed', '{:,}'.format(r.analyzed_clusters)),
-        ('Scan Duration', r.scan_duration_seconds|string + 's')
+      ('Image Size', r.image_size_mb|string + ' MB'),
+      ('Total Clusters', '{:,}'.format(r.total_clusters)),
+      ('Analyzed', '{:,}'.format(r.analyzed_clusters)),
+      ('Scan Duration', r.scan_duration_seconds|string + 's')
       ] %}
       <div class="bg-slate-50 rounded-lg p-4 border border-slate-100">
         <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">{{ label }}</div>
@@ -166,10 +219,10 @@
     {% set by_class = r.region_stats.get('by_classification', {}) %}
     {% set total_a = r.analyzed_clusters or 1 %}
     {% for cls, label, color in [
-      ('secure_erase', 'Secure Erase', 'bg-red-500'),
-      ('intentional_wipe', 'Intentional Wipe', 'bg-orange-400'),
-      ('os_clear', 'OS Clear', 'bg-amber-400'),
-      ('natural_residual', 'Natural Data', 'bg-green-400')
+    ('secure_erase', 'Secure Erase', 'bg-red-500'),
+    ('intentional_wipe', 'Intentional Wipe', 'bg-orange-400'),
+    ('os_clear', 'OS Clear', 'bg-amber-400'),
+    ('natural_residual', 'Natural Data', 'bg-green-400')
     ] %}
     {% set count = by_class.get(cls, 0) %}
     {% set pct = (count / total_a * 100) if total_a else 0 %}
@@ -187,7 +240,8 @@
     <div class="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-4 text-sm">
       <div>
         <span class="text-slate-500">Mean Entropy:</span>
-        <span class="font-semibold ml-1 text-slate-700">{{ "%.4f"|format(r.region_stats.get('mean_entropy', 0)) }} bits/byte</span>
+        <span class="font-semibold ml-1 text-slate-700">{{ "%.4f"|format(r.region_stats.get('mean_entropy', 0)) }}
+          bits/byte</span>
       </div>
       <div>
         <span class="text-slate-500">Intent Confidence:</span>
@@ -226,7 +280,8 @@
             <td class="px-5 py-3 text-center text-slate-600">{{ w.pass_count }}</td>
             <td class="px-5 py-3 text-center">
               {% set conf_pct = (w.confidence * 100)|int %}
-              <span class="font-medium
+              <span
+                class="font-medium
                 {% if conf_pct >= 70 %}text-green-600{% elif conf_pct >= 40 %}text-amber-500{% else %}text-red-500{% endif %}">
                 {{ conf_pct }}%
               </span>
@@ -254,9 +309,9 @@
   <div id="tab-intent" class="tab-panel hidden p-6">
     <div class="grid grid-cols-3 gap-4 mb-6">
       {% for label, value, color in [
-        ('Intent Score', "%.1f"|format(intent.get('score',0)) + '/100', 'text-blue-600'),
-        ('Confidence Tier', intent.get('confidence','LOW'), 'text-slate-700'),
-        ('Wipe Scope', intent.get('wipe_scope','unknown')|title, 'text-slate-700')
+      ('Intent Score', "%.1f"|format(intent.get('score',0)) + '/100', 'text-blue-600'),
+      ('Confidence Tier', intent.get('confidence','LOW'), 'text-slate-700'),
+      ('Wipe Scope', intent.get('wipe_scope','unknown')|title, 'text-slate-700')
       ] %}
       <div class="bg-slate-50 rounded-lg p-4 border border-slate-100 text-center">
         <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">{{ label }}</div>
@@ -271,7 +326,8 @@
       {% for pt in intent.evidence_points %}
       <div class="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-lg p-3">
         <svg class="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <span class="text-sm text-slate-700">{{ pt }}</span>
       </div>
@@ -283,7 +339,8 @@
     <h3 class="text-sm font-semibold text-slate-700 mb-3">Targeted Directories</h3>
     <div class="flex flex-wrap gap-2">
       {% for d in intent.targeted_dirs %}
-      <span class="font-mono text-xs bg-red-50 border border-red-200 text-red-700 px-2.5 py-1.5 rounded-lg">{{ d }}</span>
+      <span class="font-mono text-xs bg-red-50 border border-red-200 text-red-700 px-2.5 py-1.5 rounded-lg">{{ d
+        }}</span>
       {% endfor %}
     </div>
     {% endif %}
@@ -291,13 +348,15 @@
     <div class="mt-6 grid grid-cols-2 gap-4 text-sm">
       <div class="bg-slate-50 rounded-lg p-4 border border-slate-100">
         <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Temporal Correlation</div>
-        <div class="font-semibold {% if intent.get('temporal_correlation') %}text-red-600{% else %}text-green-600{% endif %}">
+        <div
+          class="font-semibold {% if intent.get('temporal_correlation') %}text-red-600{% else %}text-green-600{% endif %}">
           {{ 'Yes — wipe follows deletions' if intent.get('temporal_correlation') else 'No correlation detected' }}
         </div>
       </div>
       <div class="bg-slate-50 rounded-lg p-4 border border-slate-100">
         <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Sensitive Dirs Targeted</div>
-        <div class="font-semibold {% if intent.get('sensitive_dir_targeted') %}text-red-600{% else %}text-green-600{% endif %}">
+        <div
+          class="font-semibold {% if intent.get('sensitive_dir_targeted') %}text-red-600{% else %}text-green-600{% endif %}">
           {{ 'Yes — sensitive content targeted' if intent.get('sensitive_dir_targeted') else 'No sensitive targeting' }}
         </div>
       </div>
@@ -336,7 +395,8 @@
     <h3 class="text-sm font-semibold text-slate-700 mb-3">Signature Evidence</h3>
     <div class="space-y-2 mb-6">
       {% for ev in sig.evidence %}
-      <div class="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+      <div
+        class="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
         <span class="text-blue-500">›</span> {{ ev }}
       </div>
       {% endfor %}
@@ -348,7 +408,8 @@
     <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
       <div class="flex items-center gap-2 mb-1">
         <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
         <span class="text-sm font-semibold text-amber-700">Incomplete Wipe Detected</span>
       </div>
@@ -370,17 +431,18 @@
       <h3 class="text-sm font-semibold text-slate-700">Forensic Report Preview</h3>
       <div class="flex gap-2">
         <a href="/api/report/{{ scan_id }}/json"
-           class="text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
+          class="text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
           ↓ JSON
         </a>
         <a href="/api/report/{{ scan_id }}/markdown"
-           class="text-xs font-medium text-slate-600 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors">
+          class="text-xs font-medium text-slate-600 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors">
           ↓ Markdown
         </a>
       </div>
     </div>
     <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 max-h-[600px] overflow-y-auto scrollbar-thin">
-      <pre class="text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed" id="report-preview">Loading...</pre>
+      <pre class="text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed"
+        id="report-preview">Loading...</pre>
     </div>
   </div>
 </div>
@@ -389,38 +451,38 @@
 
 {% block scripts %}
 <script>
-const SCAN_ID = '{{ scan_id }}';
+  const SCAN_ID = '{{ scan_id }}';
 
-function switchTab(id) {
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
-  document.querySelectorAll('.tab-btn').forEach(b => {
-    b.classList.remove('text-blue-600', 'border-blue-600');
-    b.classList.add('text-slate-500', 'border-transparent');
+  function switchTab(id) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.tab-btn').forEach(b => {
+      b.classList.remove('text-blue-600', 'border-blue-600');
+      b.classList.add('text-slate-500', 'border-transparent');
+    });
+    document.getElementById('tab-' + id).classList.remove('hidden');
+    const btn = document.getElementById('tab-btn-' + id);
+    btn.classList.remove('text-slate-500', 'border-transparent');
+    btn.classList.add('text-blue-600', 'border-blue-600');
+
+    if (id === 'report') loadReportPreview();
+  }
+
+  function toggleDlMenu() {
+    document.getElementById('dl-menu').classList.toggle('hidden');
+  }
+  document.addEventListener('click', e => {
+    if (!document.getElementById('dl-menu-container').contains(e.target))
+      document.getElementById('dl-menu').classList.add('hidden');
   });
-  document.getElementById('tab-' + id).classList.remove('hidden');
-  const btn = document.getElementById('tab-btn-' + id);
-  btn.classList.remove('text-slate-500', 'border-transparent');
-  btn.classList.add('text-blue-600', 'border-blue-600');
 
-  if (id === 'report') loadReportPreview();
-}
-
-function toggleDlMenu() {
-  document.getElementById('dl-menu').classList.toggle('hidden');
-}
-document.addEventListener('click', e => {
-  if (!document.getElementById('dl-menu-container').contains(e.target))
-    document.getElementById('dl-menu').classList.add('hidden');
-});
-
-async function loadReportPreview() {
-  const el = document.getElementById('report-preview');
-  if (el.textContent !== 'Loading...') return;
-  try {
-    const res = await fetch(`/api/results/${SCAN_ID}`);
-    const data = await res.json();
-    el.textContent = JSON.stringify(data, null, 2);
-  } catch(e) { el.textContent = 'Failed to load report.'; }
-}
+  async function loadReportPreview() {
+    const el = document.getElementById('report-preview');
+    if (el.textContent !== 'Loading...') return;
+    try {
+      const res = await fetch(`/api/results/${SCAN_ID}`);
+      const data = await res.json();
+      el.textContent = JSON.stringify(data, null, 2);
+    } catch (e) { el.textContent = 'Failed to load report.'; }
+  }
 </script>
 {% endblock %}

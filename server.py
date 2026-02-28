@@ -17,6 +17,7 @@ import traceback
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from pydantic import BaseModel
 from typing import Any
 
 import aiofiles
@@ -51,6 +52,10 @@ _pending_scans: dict[str, dict] = {}     # scan_id → {path, filename, cluster_
 _scan_results:  dict[str, ScanResult] = {}
 _agent_sessions: dict[str, Any] = {}     # scan_id → ForensicAgent
 _scan_history:  list[dict] = []          # for dashboard table
+_active_scans:  dict[str, Any] = {}      # scan_id → stdlib Queue (prevents duplicate scan threads)
+_scan_events: dict[str, threading.Event] = {}
+_scan_answers: dict[str, str] = {}
+_scan_history_logs: dict[str, list[dict]] = {} # scan_id → list of log dicts
 
 
 # ------------------------------------------------------------------ #
@@ -207,179 +212,26 @@ async def upload_image(
 
 
 # ------------------------------------------------------------------ #
-# SSE: Real-time scan streaming
-# ------------------------------------------------------------------ #
-
-@app.get("/api/scan/{scan_id}/stream")
-async def scan_stream(scan_id: str, request: Request):
-    """SSE endpoint — streams scan progress events to the browser."""
-    pending = _pending_scans.get(scan_id)
-    if not pending:
-        return JSONResponse({"error": "Scan not found"}, status_code=404)
-
-    # If already completed, just return the result immediately
-    if scan_id in _scan_results:
-        result = _scan_results[scan_id]
-
-        async def already_done():
-            complete_evt = {
-                "type": "complete",
-                "evidence_score": result.evidence_score,
-                "risk_level": result.intent_assessment.get("risk_level", "MINIMAL"),
-                "wipe_count": len(result.wipe_detections),
-                "tool": (result.signature_matches[0].get("tool", "Unknown")
-                         if result.signature_matches else "None detected"),
-                "redirect_url": f"/results/{scan_id}",
-            }
-            yield f"data: {json.dumps(complete_evt)}\n\n"
-
-        return StreamingResponse(already_done(), media_type="text/event-stream",
-                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
-
-    loop = asyncio.get_running_loop()
-    event_queue: asyncio.Queue = asyncio.Queue(maxsize=2000)
-    sentinel = object()
-
-    batch_state = {
-        "counter": 0,
-        "counts": {"natural_residual": 0, "os_clear": 0, "intentional_wipe": 0, "secure_erase": 0},
-    }
-    BATCH_SIZE = 50
-
-    def on_progress(current: int, total: int):
-        loop.call_soon_threadsafe(
-            event_queue.put_nowait,
-            {"type": "progress", "current": current, "total": total,
-             "pct": round(current / total * 100, 1) if total else 0}
-        )
-
-    def on_cluster_event(cluster_id: int, analysis: dict):
-        cls = analysis.get("classification", "natural_residual")
-        entropy = analysis.get("entropy", 0.0)
-        batch_state["counter"] += 1
-        batch_state["counts"][cls] = batch_state["counts"].get(cls, 0) + 1
-
-        if batch_state["counter"] % BATCH_SIZE == 0:
-            loop.call_soon_threadsafe(
-                event_queue.put_nowait,
-                {
-                    "type": "cluster_batch",
-                    "counts": dict(batch_state["counts"]),
-                    "entropy": round(entropy, 3),
-                    "cluster_id": cluster_id,
-                }
-            )
-
-    result_holder: list[ScanResult] = []
-
-    def run_scan():
-        try:
-            scanner = ClusterScanner(
-                image_path=pending["path"],
-                cluster_size=pending["cluster_size"],
-                progress_callback=on_progress,
-                cluster_event_callback=on_cluster_event,
-            )
-            result = scanner.run_full_scan(step=pending["step"])
-            result_holder.append(result)
-            loop.call_soon_threadsafe(event_queue.put_nowait, {"type": "__done__", "result": result})
-        except Exception as exc:
-            loop.call_soon_threadsafe(event_queue.put_nowait, {"type": "__error__", "message": str(exc)})
-        finally:
-            loop.call_soon_threadsafe(event_queue.put_nowait, sentinel)
-
-    async def generate():
-        # Send started event immediately
-        path = Path(pending["path"])
-        total_clusters = path.stat().st_size // pending["cluster_size"]
-        started = {
-            "type": "started",
-            "scan_id": scan_id,
-            "filename": pending["filename"],
-            "size_mb": pending["size_mb"],
-            "total_clusters": total_clusters,
-            "cluster_size": pending["cluster_size"],
-            "step": pending["step"],
-        }
-        yield f"data: {json.dumps(started)}\n\n"
-
-        # Start scan in background thread
-        t = threading.Thread(target=run_scan, daemon=True)
-        t.start()
-
-        # Stream events
-        while True:
-            if await request.is_disconnected():
-                break
-            try:
-                event = await asyncio.wait_for(event_queue.get(), timeout=120.0)
-            except asyncio.TimeoutError:
-                yield f"data: {json.dumps({'type': 'ping'})}\n\n"
-                continue
-
-            if event is sentinel:
-                break
-
-            if event["type"] == "__done__":
-                result = event["result"]
-                _scan_results[scan_id] = result
-
-                for det in result.wipe_detections:
-                    yield f"data: {json.dumps({'type': 'wipe_detected', 'detection': det.to_dict()})}\n\n"
-
-                complete_evt = {
-                    "type": "complete",
-                    "evidence_score": result.evidence_score,
-                    "risk_level": result.intent_assessment.get("risk_level", "MINIMAL"),
-                    "wipe_count": len(result.wipe_detections),
-                    "tool": (result.signature_matches[0].get("tool", "Unknown")
-                             if result.signature_matches else "None detected"),
-                    "redirect_url": f"/results/{scan_id}",
-                }
-                yield f"data: {json.dumps(complete_evt)}\n\n"
-
-                _scan_history.append({
-                    "scan_id": scan_id,
-                    "filename": pending["filename"],
-                    "size_mb": pending["size_mb"],
-                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
-                    "evidence_score": result.evidence_score,
-                    "risk_level": result.intent_assessment.get("risk_level", "MINIMAL"),
-                    "wipe_regions": len(result.wipe_detections),
-                })
-
-            elif event["type"] == "__error__":
-                yield f"data: {json.dumps({'type': 'error', 'message': event['message']})}\n\n"
-
-            else:
-                yield f"data: {json.dumps(event)}\n\n"
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
-# ------------------------------------------------------------------ #
 # API: SSE scan stream (used by scan.html)
 # ------------------------------------------------------------------ #
 
 @app.get("/api/scan/{scan_id}/stream")
 async def scan_stream(scan_id: str, request: Request):
+    import queue as _stdlib_queue
+
     pending = _get_pending(scan_id)
     if not pending:
         return JSONResponse({"error": "Scan not found"}, status_code=404)
 
-    loop = asyncio.get_running_loop()
-    
     is_new_scan = False
     if scan_id in _active_scans:
         event_queue = _active_scans[scan_id]
         print(f"[{datetime.now().time()}] Reconnected SSE for scan {scan_id}", file=sys.stderr)
     else:
-        event_queue = asyncio.Queue(maxsize=0)
+        # Use stdlib Queue.Queue — fully thread-safe, no asyncio loop coupling
+        event_queue = _stdlib_queue.Queue()
         _active_scans[scan_id] = event_queue
+        _scan_history_logs[scan_id] = []
         is_new_scan = True
         print(f"[{datetime.now().time()}] Started new SSE stream for scan {scan_id}", file=sys.stderr)
 
@@ -391,31 +243,55 @@ async def scan_stream(scan_id: str, request: Request):
     }
     BATCH_SIZE = 50
 
+    # These callbacks are called from the background thread.
+    # stdlib Queue.put() is thread-safe — no call_soon_threadsafe needed.
     def on_progress(current: int, total: int):
         pct = round(current / total * 100, 1) if total else 0.0
         if pct != batch_state.get("last_pct"):
             batch_state["last_pct"] = pct
-            loop.call_soon_threadsafe(
-                event_queue.put_nowait,
-                {"type": "progress", "current": current, "total": total, "pct": pct}
-            )
+            event_queue.put({"type": "progress", "current": current, "total": total, "pct": pct})
 
     def on_cluster_event(cluster_id: int, analysis: dict):
         cls = analysis.get("classification", "natural_residual")
-        entropy = analysis.get("entropy", 0.0)
-        batch_state["counter"] += 1
         batch_state["counts"][cls] = batch_state["counts"].get(cls, 0) + 1
-        batch_state["last_entropy"] = entropy
-        if batch_state["counter"] % BATCH_SIZE == 0:
-            loop.call_soon_threadsafe(
-                event_queue.put_nowait,
-                {
-                    "type": "cluster_batch",
-                    "counts": dict(batch_state["counts"]),
-                    "entropy": round(entropy, 3),
-                    "cluster_id": cluster_id,
-                }
-            )
+        batch_state["last_entropy"] = analysis.get("entropy", 0.0)
+
+        # Emit wipe alerts instantly
+        if cls in ("intentional_wipe", "secure_erase"):
+            event_queue.put({"type": "wipe_detected", "offset": analysis.get("offset")})
+
+        batch_state["counter"] += 1
+        if batch_state["counter"] >= BATCH_SIZE:
+            event_queue.put({"type": "status", **batch_state["counts"], "entropy": batch_state["last_entropy"]})
+            batch_state["counter"] = 0
+
+    def on_agent_thought(thought: str):
+        if scan_id in _scan_history_logs:
+            _scan_history_logs[scan_id].append({"actor": "AI Analyst", "text": thought})
+        event_queue.put({"type": "agent_thought", "thought": thought})
+
+    def on_agent_question(question: str) -> str:
+        if scan_id in _scan_history_logs:
+            _scan_history_logs[scan_id].append({"actor": "AI Request", "text": question})
+            
+        # 1. Fire the question to the UI
+        event_queue.put({"type": "agent_question", "question": question})
+        
+        # 2. Prevent race conditions if multiple questions happen (unlikely in PipelineAgent but safe)
+        if scan_id not in _scan_events:
+            _scan_events[scan_id] = threading.Event()
+            
+        _scan_events[scan_id].clear()
+        
+        # 3. Block this background thread until /api/scan/../answer sets the event
+        _scan_events[scan_id].wait()
+        
+        # 4. Thread unblocked: pop the answer
+        answer = _scan_answers.pop(scan_id, "")
+        if scan_id in _scan_history_logs:
+            _scan_history_logs[scan_id].append({"actor": "Human Investigator", "text": answer})
+            
+        return answer
 
     result_holder: list[ScanResult] = []
     error_holder: list[str] = []
@@ -428,20 +304,26 @@ async def scan_stream(scan_id: str, request: Request):
                 progress_callback=on_progress,
                 cluster_event_callback=on_cluster_event,
             )
-            # Notify UI that cluster scan is done and post-processing started
-            loop.call_soon_threadsafe(event_queue.put_nowait, {"type": "status", "message": "Finalizing analysis..."})
+            scanner.agent_thought_callback = on_agent_thought
+            scanner.agent_question_callback = on_agent_question
+            
+            event_queue.put({"type": "status", "message": "Finalizing analysis..."})
             result = scanner.run_full_scan(step=pending["step"])
+            result.activity_log = _scan_history_logs.get(scan_id, [])
             result_holder.append(result)
-            loop.call_soon_threadsafe(event_queue.put_nowait, {"type": "__done__", "result": result})
+            event_queue.put({"type": "__done__", "result": result})
         except Exception as exc:
             tb = traceback.format_exc()
             print(f"[Scan Thread Error] {scan_id}:\n{tb}", file=sys.stderr)
             error_holder.append(str(exc))
-            loop.call_soon_threadsafe(event_queue.put_nowait, {"type": "__error__", "message": str(exc)})
+            event_queue.put({"type": "__error__", "message": str(exc)})
         finally:
-            loop.call_soon_threadsafe(_active_scans.pop, scan_id, None)
+            _active_scans.pop(scan_id, None)
+            _scan_events.pop(scan_id, None)
+            _scan_answers.pop(scan_id, None)
 
     async def generate():
+        import queue as _q
         # Send the "started" event first
         try:
             path = Path(pending["path"])
@@ -465,14 +347,22 @@ async def scan_stream(scan_id: str, request: Request):
             scan_thread.start()
 
         wipe_detections_sent = 0
+        last_heartbeat = time.time()
+
         while True:
             if await request.is_disconnected():
                 break
+
+            # Non-blocking poll of the thread-safe stdlib queue
             try:
-                event = await asyncio.wait_for(event_queue.get(), timeout=30.0)
-            except asyncio.TimeoutError:
-                # Send a heartbeat comment to keep the connection alive
-                yield ": heartbeat\n\n"
+                event = event_queue.get_nowait()
+            except _q.Empty:
+                # Yield control to the event loop briefly
+                await asyncio.sleep(0.05)
+                # Send a heartbeat every 25 seconds to keep connection alive
+                if time.time() - last_heartbeat > 25:
+                    yield ": heartbeat\n\n"
+                    last_heartbeat = time.time()
                 continue
 
             if event["type"] == "__done__":
@@ -642,6 +532,27 @@ async def download_md_report(scan_id: str):
 # ------------------------------------------------------------------ #
 # Entry point
 # ------------------------------------------------------------------ #
+
+class QuestionAnswer(BaseModel):
+    answer: str
+
+@app.post("/api/scan/{scan_id}/answer")
+async def answer_agent_question(scan_id: str, data: QuestionAnswer):
+    """
+    Receives the human answer to the agent's mid-scan clarification question
+    and unblocks the background scan pipeline.
+    """
+    if scan_id not in _scan_events:
+        raise HTTPException(status_code=404, detail="Scan not found or not waiting for an answer")
+    
+    # Store the answer to be picked up by the blocked thread
+    _scan_answers[scan_id] = data.answer
+    
+    # Unblock the background thread!
+    _scan_events[scan_id].set()
+    
+    return {"status": "ok", "message": "Answer submitted to pipeline"}
+
 
 if __name__ == "__main__":
     import uvicorn

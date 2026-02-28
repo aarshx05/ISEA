@@ -39,6 +39,7 @@ class IntentAssessment:
     wipe_scope: str = "unknown"     # "selective" | "partition" | "full_disk"
     temporal_correlation: bool = False
     sensitive_dir_targeted: bool = False
+    investigator_questions: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -51,6 +52,7 @@ class IntentAssessment:
             "wipe_scope": self.wipe_scope,
             "temporal_correlation": self.temporal_correlation,
             "sensitive_dir_targeted": self.sensitive_dir_targeted,
+            "investigator_questions": self.investigator_questions,
         }
 
 
@@ -69,11 +71,13 @@ class IntentModeler:
         fs_metadata: dict,
         cluster_analyses: list[dict],
         wipe_detections: list[dict] | None = None,
+        agent: Any | None = None,
     ):
         self.fs_metadata = fs_metadata
         self.cluster_analyses = cluster_analyses
         self.wipe_detections = wipe_detections or []
         self._evidence: list[IntentEvidence] = []
+        self.agent = agent
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -142,19 +146,47 @@ class IntentModeler:
                 category="intensity"
             ))
 
-        # Compute composite intent score (0–100)
+        # Compute baseline algorithmic score
         raw_score = sum(e.weight * e.confidence for e in self._evidence)
-        # Normalize: max possible from weights is ~1.0 → scale to 100
         intent_score = round(min(raw_score * 100, 100.0), 1)
-
-        # Classify confidence tier
         confidence_tier = self._score_to_confidence(intent_score)
         risk_level = self._score_to_risk(intent_score)
-
-        # Build hypothesis
         hypothesis = self._build_hypothesis(
             intent_score, scope, targeted_dirs, temporal, sensitive
         )
+        ai_questions = []
+
+        # ----------------------------------------------------
+        # AGENTIC AI INTEGRATION: Override with AI deduction
+        # ----------------------------------------------------
+        if self.agent:
+            crime_scene = {
+                "wipe_scope": scope,
+                "is_localized": is_local,
+                "targeted_dirs": targeted_dirs,
+                "intensity": intensity,
+                "temporal_correlation": temporal,
+                "sensitive_targeted": bool(sensitive),
+                "wiped_clusters": sum(1 for a in self.cluster_analyses if a.get("classification") in ("intentional_wipe", "secure_erase")),
+                "total_clusters": len(self.cluster_analyses),
+            }
+            ai_assessment = self.agent.analyze_intent(crime_scene)
+            
+            if ai_assessment:
+                # Merge AI deductive reasoning
+                intent_score = ai_assessment.get("score", intent_score)
+                hypothesis = ai_assessment.get("hypothesis", hypothesis)
+                confidence_tier = ai_assessment.get("confidence", confidence_tier)
+                risk_level = ai_assessment.get("risk_level", risk_level)
+                ai_questions = ai_assessment.get("investigator_questions", [])
+                
+                # Add a marker so the UI knows this is AI-generated
+                self._evidence.insert(0, IntentEvidence(
+                    description="AI Agentic Analysis applied to crime scene",
+                    weight=0.0,
+                    confidence=1.0,
+                    category="ai_inference"
+                ))
 
         assessment = IntentAssessment(
             score=intent_score,
@@ -166,6 +198,7 @@ class IntentModeler:
             wipe_scope=scope,
             temporal_correlation=temporal,
             sensitive_dir_targeted=bool(sensitive),
+            investigator_questions=ai_questions,
         )
         return assessment.to_dict()
 

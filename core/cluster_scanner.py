@@ -7,6 +7,7 @@ Coordinates the full analysis pipeline:
 This is the main entry point for programmatic use.
 """
 
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +16,7 @@ from core.disk_analyzer import DiskAnalyzer
 from core.entropy_engine import EntropyEngine
 from core.intent_modeler import IntentModeler
 from signatures.wipe_signatures import SignatureMatcher
+from agent.pipeline_agent import PipelineAgent
 
 
 @dataclass
@@ -63,6 +65,7 @@ class ScanResult:
     intent_assessment: dict = field(default_factory=dict)
     cluster_analyses: list[dict] = field(default_factory=list)
     region_stats: dict = field(default_factory=dict)
+    activity_log: list[dict] = field(default_factory=list)
     evidence_score: float = 0.0          # 0–100
     scan_duration_seconds: float = 0.0
     scan_step: int = 1                   # sampling step used
@@ -80,6 +83,7 @@ class ScanResult:
             "signature_matches": self.signature_matches,
             "intent_assessment": self.intent_assessment,
             "region_stats": self.region_stats,
+            "activity_log": self.activity_log,
             "evidence_score": self.evidence_score,
             "scan_duration_seconds": round(self.scan_duration_seconds, 2),
             "scan_step": self.scan_step,
@@ -116,6 +120,8 @@ class ClusterScanner:
         self.cluster_size = cluster_size
         self.progress_callback = progress_callback
         self.cluster_event_callback = cluster_event_callback
+        self.agent_thought_callback = None
+        self.agent_question_callback = None
         self._engine = EntropyEngine()
         self._matcher = SignatureMatcher()
 
@@ -153,9 +159,13 @@ class ClusterScanner:
                 signature_matches = self._classify_signatures(cluster_analyses, wipe_detections)
                 d2 = time.time() - t2
 
-                # --- 3. Intent & Scoring ---
+                # --- 3. Intent & Scoring (Agentic) ---
                 t3 = time.time()
-                intent = self._run_intent_model(fs_metadata, cluster_analyses, wipe_detections)
+                agent = PipelineAgent(
+                    agent_thought_callback=self.agent_thought_callback,
+                    agent_question_callback=self.agent_question_callback
+                )
+                intent = self._run_intent_model(fs_metadata, cluster_analyses, wipe_detections, agent)
                 evidence_score = self._compute_evidence_score(
                     region_stats, intent, wipe_detections
                 )
@@ -345,12 +355,14 @@ class ClusterScanner:
         fs_metadata: dict,
         cluster_analyses: list[dict],
         wipe_detections: list[WipeDetection],
+        agent: PipelineAgent,
     ) -> dict:
         wipe_dicts = [w.to_dict() for w in wipe_detections]
         modeler = IntentModeler(
             fs_metadata=fs_metadata,
             cluster_analyses=cluster_analyses,
             wipe_detections=wipe_dicts,
+            agent=agent,
         )
         return modeler.compute_intent_score()
 
