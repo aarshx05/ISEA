@@ -155,28 +155,13 @@
     {% endif %}
 
     <!-- Agent Activity Log History -->
-    {% if r.activity_log and r.activity_log|length > 0 %}
-    <div class="mt-6 border border-slate-200 rounded-lg overflow-hidden">
-      <div class="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex justify-between items-center cursor-pointer"
-        onclick="document.getElementById('agent-log-content').classList.toggle('hidden')">
-        <h4 class="text-sm font-semibold text-slate-700">AI Analyst Thought Process</h4>
-        <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-        </svg>
-      </div>
-      <div id="agent-log-content" class="hidden bg-slate-900 border-t border-slate-200 p-4 max-h-96 overflow-y-auto">
-        <div class="space-y-3 font-mono text-sm text-left">
-          {% for log in r.activity_log %}
-          {% if log.actor == 'AI Analyst' %}
-          <div class="text-blue-400"><span class="text-slate-500">[AI Analyst]</span> {{ log.text }}</div>
-          {% elif log.actor == 'AI Request' %}
-          <div class="text-amber-400 font-semibold"><span class="text-amber-600">[AI Request]</span> {{ log.text }}
-          </div>
-          {% elif log.actor == 'Human Investigator' %}
-          <div class="text-green-400"><span class="text-green-600">[Investigator]</span> {{ log.text }}</div>
-          {% endif %}
-          {% endfor %}
-        </div>
+    {% if r.activity_log %}
+    <div class="mt-6 border border-slate-200 rounded-lg p-4">
+      <h4 class="text-sm font-semibold mb-2">AI Analyst Thought Process</h4>
+      <div class="space-y-1 font-mono text-xs">
+        {% for log in r.activity_log %}
+        <div>[{{ log.actor }}] {{ log.text }}</div>
+        {% endfor %}
       </div>
     </div>
     {% endif %}
