@@ -1,0 +1,16 @@
+groq>=0.11.0
+python-dotenv>=1.0.0
+numpy>=1.26.0
+rich>=13.7.0
+click>=8.1.7
+pytest>=8.0.0
+# Web UI
+fastapi>=0.111.0
+uvicorn>=0.29.0
+python-multipart>=0.0.9
+jinja2>=3.1.4
+aiofiles>=23.2.1
+# Optional: uncomment if you need E01 forensic image support
+# pyewf>=20230709
+# Optional: uncomment if you need deep filesystem parsing
+# pytsk3>=20230125

@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+
+{% block title %}AI Analyst — {{ filename }}{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center gap-2 text-sm text-slate-500 mb-4">
+  <a href="/" class="hover:text-blue-600">Dashboard</a>
+  <span>›</span>
+  <a href="/results/{{ scan_id }}" class="hover:text-blue-600">Results</a>
+  <span>›</span>
+  <span>AI Analyst</span>
+</div>
+
+<div class="grid grid-cols-12 gap-5" style="height:calc(100vh - 180px); min-height:500px">
+
+  <!-- Sidebar: Evidence summary -->
+  <div class="col-span-3 flex flex-col gap-4 overflow-y-auto scrollbar-thin">
+    <!-- Image info -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <div class="flex items-center gap-2 mb-3">
+        <div class="bg-blue-50 p-1.5 rounded-lg">
+          <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+          </svg>
+        </div>
+        <span class="text-sm font-semibold text-slate-700 truncate">{{ filename }}</span>
+      </div>
+      <div class="space-y-2 text-xs text-slate-500">
+        <div class="flex justify-between">
+          <span>Evidence Score</span>
+          <span class="font-semibold text-slate-800">{{ evidence_score|int }}/100</span>
+        </div>
+        <div class="flex justify-between">
+          <span>Risk Level</span>
+          <span class="font-semibold
+            {% if risk_level == 'CRITICAL' %}text-red-600
+            {% elif risk_level == 'PROBABLE' %}text-orange-500
+            {% elif risk_level == 'POSSIBLE' %}text-amber-500
+            {% else %}text-green-600{% endif %}">
+            {{ risk_level }}
+          </span>
+        </div>
+        {% if summary %}
+        <div class="flex justify-between">
+          <span>Wipe Regions</span>
+          <span class="font-semibold text-slate-800">{{ summary.wipe_regions_detected }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span>Wipe Fraction</span>
+          <span class="font-semibold text-slate-800">{{ "%.1f"|format(summary.wipe_fraction * 100) }}%</span>
+        </div>
+        {% if summary.top_tools_detected %}
+        <div class="pt-2 border-t border-slate-100">
+          <div class="text-xs font-medium text-slate-500 mb-1.5">Top Tool Detected</div>
+          <div class="font-semibold text-slate-700">{{ summary.top_tools_detected[0][0] }}</div>
+        </div>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Suggested questions -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Suggested Questions</div>
+      <div class="space-y-1.5">
+        {% for q in [
+          'Was this wipe intentional?',
+          'Which tool was most likely used?',
+          'Full disk or selective wipe?',
+          'Which directory has highest destruction?',
+          'Estimate number of overwrite passes.',
+          'Generate a complete forensic report.'
+        ] %}
+        <button onclick="sendSuggestion(this)"
+          class="w-full text-left text-xs text-slate-600 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 rounded-lg px-3 py-2 transition-all leading-snug">
+          {{ q }}
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Back link -->
+    <a href="/results/{{ scan_id }}"
+       class="flex items-center gap-2 text-sm text-slate-500 hover:text-blue-600 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+      </svg>
+      Back to Results
+    </a>
+  </div>
+
+  <!-- Chat panel -->
+  <div class="col-span-9 flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <!-- Chat header -->
+    <div class="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
+      <div class="bg-blue-600 p-2 rounded-lg">
+        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+        </svg>
+      </div>
+      <div>
+        <div class="text-sm font-semibold text-slate-700">ISEA Forensic Analyst</div>
+        <div class="text-xs text-slate-400">LLaMA 3.3 70B · Tool-augmented reasoning</div>
+      </div>
+      <div class="ml-auto flex items-center gap-1.5">
+        <span id="status-indicator" class="w-2 h-2 bg-green-400 rounded-full"></span>
+        <span id="status-text" class="text-xs text-slate-400">Ready</span>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div id="messages" class="flex-1 overflow-y-auto scrollbar-thin p-5 space-y-4">
+      <!-- Welcome message -->
+      <div class="flex items-start gap-3 animate-slide-in">
+        <div class="w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+          <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+        </div>
+        <div class="bg-slate-50 border border-slate-200 rounded-xl rounded-tl-none px-4 py-3 max-w-2xl">
+          <p class="text-sm text-slate-700 leading-relaxed">
+            Hello. I'm your ISEA forensic analyst. I've reviewed the scan results for
+            <strong class="font-mono">{{ filename }}</strong>.
+            The analysis shows an evidence score of <strong>{{ evidence_score|int }}/100</strong>
+            with a risk level of <strong class="
+              {% if risk_level == 'CRITICAL' %}text-red-600
+              {% elif risk_level == 'PROBABLE' %}text-orange-500
+              {% elif risk_level == 'POSSIBLE' %}text-amber-500
+              {% else %}text-green-600{% endif %}
+            ">{{ risk_level }}</strong>.
+            What would you like to know?
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tool call indicator -->
+    <div id="tool-indicator" class="hidden px-5 py-2 border-t border-slate-50">
+      <div class="flex items-center gap-2 text-xs text-slate-400">
+        <div class="flex gap-1">
+          <span class="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse-dot" style="animation-delay:0s"></span>
+          <span class="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse-dot" style="animation-delay:0.2s"></span>
+          <span class="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse-dot" style="animation-delay:0.4s"></span>
+        </div>
+        <span id="tool-indicator-text">Analyzing evidence...</span>
+      </div>
+    </div>
+
+    <!-- Input bar -->
+    <div class="px-5 py-4 border-t border-slate-200 bg-white">
+      <div class="flex items-end gap-3">
+        <div class="flex-1 bg-slate-50 border border-slate-200 rounded-xl overflow-hidden focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400 transition-all">
+          <textarea id="chat-input"
+            rows="1"
+            placeholder="Ask about wipe patterns, attacker intent, tool classification..."
+            class="w-full bg-transparent px-4 py-3 text-sm text-slate-700 placeholder-slate-400 outline-none resize-none"
+            oninput="autoResize(this)"
+            onkeydown="handleKeyDown(event)"></textarea>
+        </div>
+        <button id="send-btn" onclick="sendMessage()"
+          class="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+          </svg>
+        </button>
+      </div>
+      <div class="text-xs text-slate-400 mt-2 ml-1">Press Enter to send · Shift+Enter for new line</div>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const SCAN_ID = '{{ scan_id }}';
+let isStreaming = false;
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function handleKeyDown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function sendSuggestion(btn) {
+  document.getElementById('chat-input').value = btn.textContent.trim();
+  sendMessage();
+}
+
+function setStatus(text, busy) {
+  document.getElementById('status-text').textContent = text;
+  document.getElementById('status-indicator').className = busy
+    ? 'w-2 h-2 bg-amber-400 rounded-full animate-pulse-dot'
+    : 'w-2 h-2 bg-green-400 rounded-full';
+  document.getElementById('send-btn').disabled = busy;
+}
+
+function showToolIndicator(text) {
+  document.getElementById('tool-indicator').classList.remove('hidden');
+  document.getElementById('tool-indicator-text').textContent = text;
+}
+function hideToolIndicator() {
+  document.getElementById('tool-indicator').classList.add('hidden');
+}
+
+function appendUserMessage(text) {
+  const messages = document.getElementById('messages');
+  const el = document.createElement('div');
+  el.className = 'flex items-start gap-3 justify-end animate-slide-in';
+  el.innerHTML = `
+    <div class="bg-blue-600 text-white rounded-xl rounded-tr-none px-4 py-3 max-w-xl">
+      <p class="text-sm leading-relaxed">${escapeHtml(text)}</p>
+    </div>
+    <div class="w-7 h-7 bg-slate-200 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-xs font-semibold text-slate-500">
+      You
+    </div>
+  `;
+  messages.appendChild(el);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function createAgentBubble() {
+  const messages = document.getElementById('messages');
+  const el = document.createElement('div');
+  el.className = 'flex items-start gap-3 animate-slide-in';
+  el.innerHTML = `
+    <div class="w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+      <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+      </svg>
+    </div>
+    <div class="bg-slate-50 border border-slate-200 rounded-xl rounded-tl-none px-4 py-3 max-w-2xl min-w-[200px]">
+      <p id="agent-response-text" class="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap"></p>
+      <span id="agent-cursor" class="inline-block w-0.5 h-4 bg-blue-500 ml-0.5 animate-pulse-dot align-text-bottom"></span>
+    </div>
+  `;
+  messages.appendChild(el);
+  messages.scrollTop = messages.scrollHeight;
+  return el;
+}
+
+async function sendMessage() {
+  if (isStreaming) return;
+  const input = document.getElementById('chat-input');
+  const message = input.value.trim();
+  if (!message) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  isStreaming = true;
+  setStatus('Thinking...', true);
+  showToolIndicator('Analyzing evidence with AI...');
+
+  appendUserMessage(message);
+
+  const bubble = createAgentBubble();
+  const textEl = bubble.querySelector('#agent-response-text');
+  const cursor = bubble.querySelector('#agent-cursor');
+  const messages = document.getElementById('messages');
+  let buffer = '';
+
+  try {
+    const url = `/api/chat/${SCAN_ID}/stream?message=${encodeURIComponent(message)}`;
+    const es = new EventSource(url);
+
+    es.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+
+      if (data.type === 'thinking') {
+        showToolIndicator('Analyzing evidence with AI...');
+      }
+      else if (data.type === 'start') {
+        hideToolIndicator();
+        setStatus('Responding...', true);
+      }
+      else if (data.type === 'token') {
+        buffer += data.token;
+        textEl.textContent = buffer;
+        messages.scrollTop = messages.scrollHeight;
+      }
+      else if (data.type === 'done') {
+        cursor.remove();
+        es.close();
+        isStreaming = false;
+        hideToolIndicator();
+        setStatus('Ready', false);
+      }
+    };
+
+    es.onerror = () => {
+      es.close();
+      if (!buffer) textEl.textContent = 'Error: Could not connect to AI. Check your GROQ_API_KEY in .env';
+      cursor.remove();
+      isStreaming = false;
+      hideToolIndicator();
+      setStatus('Ready', false);
+    };
+
+  } catch(err) {
+    textEl.textContent = 'Error: ' + err.message;
+    cursor.remove();
+    isStreaming = false;
+    hideToolIndicator();
+    setStatus('Ready', false);
+  }
+}
+
+function escapeHtml(text) {
+  return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+{% endblock %}

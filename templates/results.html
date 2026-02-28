@@ -1,0 +1,426 @@
+{% extends "base.html" %}
+{% set r = result %}
+{% set intent = r.intent_assessment %}
+{% set risk = intent.risk_level or "MINIMAL" %}
+
+{% block title %}Results — {{ filename }}{% endblock %}
+
+{% block content %}
+
+<!-- Header -->
+<div class="mb-6 flex items-center justify-between">
+  <div>
+    <div class="flex items-center gap-2 text-sm text-slate-500 mb-1">
+      <a href="/" class="hover:text-blue-600">Dashboard</a>
+      <span>›</span>
+      <span>Results</span>
+    </div>
+    <h1 class="text-xl font-bold text-slate-800">
+      Forensic Report — <span class="text-blue-600 font-mono">{{ filename }}</span>
+    </h1>
+  </div>
+  <div class="flex items-center gap-2">
+    <a href="/chat/{{ scan_id }}"
+       class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+      </svg>
+      Ask AI Analyst
+    </a>
+    <!-- Download dropdown -->
+    <div class="relative" id="dl-menu-container">
+      <button onclick="toggleDlMenu()"
+        class="flex items-center gap-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        Download Report
+        <svg class="w-3 h-3 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      <div id="dl-menu" class="hidden absolute right-0 mt-1 bg-white rounded-lg border border-slate-200 shadow-lg w-40 z-10">
+        <a href="/api/report/{{ scan_id }}/json"
+           class="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 rounded-t-lg">
+          <span class="font-mono text-xs text-blue-600">JSON</span> Evidence Report
+        </a>
+        <a href="/api/report/{{ scan_id }}/markdown"
+           class="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 rounded-b-lg border-t border-slate-100">
+          <span class="font-mono text-xs text-slate-500">MD</span> Forensic Report
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Score + risk banner -->
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-6">
+  <div class="flex items-center gap-8">
+
+    <!-- Score gauge -->
+    <div class="flex flex-col items-center flex-shrink-0">
+      <div class="relative flex items-center justify-center" style="width:120px;height:120px">
+        <svg class="w-full h-full -rotate-90" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="48" fill="none" stroke="#e2e8f0" stroke-width="10"/>
+          <circle id="score-arc" cx="60" cy="60" r="48" fill="none"
+            stroke="{{ '#dc2626' if r.evidence_score >= 75 else ('#f97316' if r.evidence_score >= 50 else ('#f59e0b' if r.evidence_score >= 25 else '#22c55e')) }}"
+            stroke-width="10"
+            stroke-dasharray="301.6"
+            stroke-dashoffset="{{ 301.6 * (1 - r.evidence_score / 100) }}"
+            stroke-linecap="round"/>
+        </svg>
+        <div class="absolute text-center">
+          <div class="text-2xl font-bold text-slate-800">{{ r.evidence_score | int }}</div>
+          <div class="text-xs text-slate-400">/100</div>
+        </div>
+      </div>
+      <div class="text-xs font-medium text-slate-500 mt-1">Evidence Score</div>
+    </div>
+
+    <!-- Divider -->
+    <div class="w-px h-24 bg-slate-200 flex-shrink-0"></div>
+
+    <!-- Key stats -->
+    <div class="grid grid-cols-4 gap-6 flex-1">
+      <div>
+        <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Risk Level</div>
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold
+          {% if risk == 'CRITICAL' %}bg-red-100 text-red-700
+          {% elif risk == 'PROBABLE' %}bg-orange-100 text-orange-700
+          {% elif risk == 'POSSIBLE' %}bg-amber-100 text-amber-700
+          {% else %}bg-green-100 text-green-700{% endif %}">
+          {{ risk }}
+        </span>
+      </div>
+      <div>
+        <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Evidence</div>
+        {% set strength_map = {'STRONG': ('bg-blue-600 text-white', 'STRONG'), 'PROBABLE': ('bg-blue-400 text-white', 'PROBABLE'), 'POSSIBLE': ('bg-slate-400 text-white', 'POSSIBLE'), 'INSUFFICIENT': ('bg-slate-200 text-slate-600', 'INSUFFICIENT')} %}
+        {% set ev_score = r.evidence_score %}
+        {% set strength = 'STRONG' if ev_score >= 75 else ('PROBABLE' if ev_score >= 50 else ('POSSIBLE' if ev_score >= 25 else 'INSUFFICIENT')) %}
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold
+          {% if strength == 'STRONG' %}bg-blue-600 text-white
+          {% elif strength == 'PROBABLE' %}bg-blue-400 text-white
+          {% elif strength == 'POSSIBLE' %}bg-slate-400 text-white
+          {% else %}bg-slate-200 text-slate-600{% endif %}">
+          {{ strength }}
+        </span>
+      </div>
+      <div>
+        <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Wipe Regions</div>
+        <div class="text-2xl font-bold {% if r.wipe_detections|length > 0 %}text-red-600{% else %}text-green-600{% endif %}">
+          {{ r.wipe_detections|length }}
+        </div>
+      </div>
+      <div>
+        <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Wipe Fraction</div>
+        <div class="text-2xl font-bold text-slate-800">
+          {{ "%.1f"|format(r.region_stats.get('wipe_fraction', 0) * 100) }}%
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hypothesis -->
+  {% if intent.hypothesis %}
+  <div class="mt-5 pt-5 border-t border-slate-100">
+    <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">AI Analyst Hypothesis</div>
+    <p class="text-slate-700 text-sm leading-relaxed">{{ intent.hypothesis }}</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Tabs -->
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+  <!-- Tab bar -->
+  <div class="flex border-b border-slate-200 overflow-x-auto">
+    {% for tab_id, tab_label in [('overview','Overview'), ('wipe-regions','Wipe Regions'), ('intent','Intent Analysis'), ('tool','Tool Classification'), ('report','Full Report')] %}
+    <button onclick="switchTab('{{ tab_id }}')"
+      id="tab-btn-{{ tab_id }}"
+      class="tab-btn px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors
+        {% if loop.first %}text-blue-600 border-blue-600{% else %}text-slate-500 border-transparent hover:text-slate-700{% endif %}">
+      {{ tab_label }}
+    </button>
+    {% endfor %}
+  </div>
+
+  <!-- Tab: Overview -->
+  <div id="tab-overview" class="tab-panel p-6">
+    <div class="grid grid-cols-4 gap-4 mb-6">
+      {% for label, value in [
+        ('Image Size', r.image_size_mb|string + ' MB'),
+        ('Total Clusters', '{:,}'.format(r.total_clusters)),
+        ('Analyzed', '{:,}'.format(r.analyzed_clusters)),
+        ('Scan Duration', r.scan_duration_seconds|string + 's')
+      ] %}
+      <div class="bg-slate-50 rounded-lg p-4 border border-slate-100">
+        <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">{{ label }}</div>
+        <div class="text-lg font-semibold text-slate-800">{{ value }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Classification breakdown -->
+    <h3 class="text-sm font-semibold text-slate-700 mb-3">Classification Breakdown</h3>
+    {% set by_class = r.region_stats.get('by_classification', {}) %}
+    {% set total_a = r.analyzed_clusters or 1 %}
+    {% for cls, label, color in [
+      ('secure_erase', 'Secure Erase', 'bg-red-500'),
+      ('intentional_wipe', 'Intentional Wipe', 'bg-orange-400'),
+      ('os_clear', 'OS Clear', 'bg-amber-400'),
+      ('natural_residual', 'Natural Data', 'bg-green-400')
+    ] %}
+    {% set count = by_class.get(cls, 0) %}
+    {% set pct = (count / total_a * 100) if total_a else 0 %}
+    <div class="mb-3">
+      <div class="flex items-center justify-between text-sm mb-1">
+        <span class="text-slate-600 font-medium">{{ label }}</span>
+        <span class="text-slate-500">{{ '{:,}'.format(count) }} ({{ "%.1f"|format(pct) }}%)</span>
+      </div>
+      <div class="w-full bg-slate-100 rounded-full h-2.5">
+        <div class="{{ color }} h-2.5 rounded-full transition-all" style="width:{{ [pct, 100]|min }}%"></div>
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-4 text-sm">
+      <div>
+        <span class="text-slate-500">Mean Entropy:</span>
+        <span class="font-semibold ml-1 text-slate-700">{{ "%.4f"|format(r.region_stats.get('mean_entropy', 0)) }} bits/byte</span>
+      </div>
+      <div>
+        <span class="text-slate-500">Intent Confidence:</span>
+        <span class="font-semibold ml-1 text-slate-700">{{ intent.get('confidence', 'LOW') }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Wipe Regions -->
+  <div id="tab-wipe-regions" class="tab-panel hidden">
+    {% if r.wipe_detections %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-slate-500 text-xs font-medium uppercase tracking-wide">
+          <tr>
+            <th class="text-left px-5 py-3">#</th>
+            <th class="text-left px-5 py-3">Cluster Range</th>
+            <th class="text-left px-5 py-3">Tool</th>
+            <th class="text-left px-5 py-3">Algorithm</th>
+            <th class="text-center px-5 py-3">Passes</th>
+            <th class="text-center px-5 py-3">Confidence</th>
+            <th class="text-center px-5 py-3">Entropy</th>
+            <th class="text-left px-5 py-3">Classification</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for w in r.wipe_detections %}
+          <tr class="border-t border-slate-100 hover:bg-slate-50/50">
+            <td class="px-5 py-3 text-slate-400 text-xs">{{ loop.index }}</td>
+            <td class="px-5 py-3 font-mono text-xs text-slate-600">
+              {{ w.start_cluster }}–{{ w.end_cluster }}
+              <span class="text-slate-400 ml-1">({{ w.cluster_count }})</span>
+            </td>
+            <td class="px-5 py-3 font-medium text-slate-800">{{ w.tool_match }}</td>
+            <td class="px-5 py-3 text-slate-600">{{ w.algorithm or '—' }}</td>
+            <td class="px-5 py-3 text-center text-slate-600">{{ w.pass_count }}</td>
+            <td class="px-5 py-3 text-center">
+              {% set conf_pct = (w.confidence * 100)|int %}
+              <span class="font-medium
+                {% if conf_pct >= 70 %}text-green-600{% elif conf_pct >= 40 %}text-amber-500{% else %}text-red-500{% endif %}">
+                {{ conf_pct }}%
+              </span>
+            </td>
+            <td class="px-5 py-3 text-center font-mono text-xs text-slate-600">{{ "%.2f"|format(w.mean_entropy) }}</td>
+            <td class="px-5 py-3">
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                {% if w.classification == 'secure_erase' %}bg-red-100 text-red-700
+                {% elif w.classification == 'intentional_wipe' %}bg-orange-100 text-orange-700
+                {% else %}bg-slate-100 text-slate-600{% endif %}">
+                {{ w.classification | replace('_', ' ') | title }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="p-12 text-center text-slate-400 text-sm">No significant wipe regions detected in this image.</div>
+    {% endif %}
+  </div>
+
+  <!-- Tab: Intent Analysis -->
+  <div id="tab-intent" class="tab-panel hidden p-6">
+    <div class="grid grid-cols-3 gap-4 mb-6">
+      {% for label, value, color in [
+        ('Intent Score', "%.1f"|format(intent.get('score',0)) + '/100', 'text-blue-600'),
+        ('Confidence Tier', intent.get('confidence','LOW'), 'text-slate-700'),
+        ('Wipe Scope', intent.get('wipe_scope','unknown')|title, 'text-slate-700')
+      ] %}
+      <div class="bg-slate-50 rounded-lg p-4 border border-slate-100 text-center">
+        <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">{{ label }}</div>
+        <div class="text-xl font-bold {{ color }}">{{ value }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if intent.get('evidence_points') %}
+    <h3 class="text-sm font-semibold text-slate-700 mb-3">Behavioral Evidence Points</h3>
+    <div class="space-y-2 mb-6">
+      {% for pt in intent.evidence_points %}
+      <div class="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-lg p-3">
+        <svg class="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span class="text-sm text-slate-700">{{ pt }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if intent.get('targeted_dirs') %}
+    <h3 class="text-sm font-semibold text-slate-700 mb-3">Targeted Directories</h3>
+    <div class="flex flex-wrap gap-2">
+      {% for d in intent.targeted_dirs %}
+      <span class="font-mono text-xs bg-red-50 border border-red-200 text-red-700 px-2.5 py-1.5 rounded-lg">{{ d }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="mt-6 grid grid-cols-2 gap-4 text-sm">
+      <div class="bg-slate-50 rounded-lg p-4 border border-slate-100">
+        <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Temporal Correlation</div>
+        <div class="font-semibold {% if intent.get('temporal_correlation') %}text-red-600{% else %}text-green-600{% endif %}">
+          {{ 'Yes — wipe follows deletions' if intent.get('temporal_correlation') else 'No correlation detected' }}
+        </div>
+      </div>
+      <div class="bg-slate-50 rounded-lg p-4 border border-slate-100">
+        <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Sensitive Dirs Targeted</div>
+        <div class="font-semibold {% if intent.get('sensitive_dir_targeted') %}text-red-600{% else %}text-green-600{% endif %}">
+          {{ 'Yes — sensitive content targeted' if intent.get('sensitive_dir_targeted') else 'No sensitive targeting' }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Tool Classification -->
+  <div id="tab-tool" class="tab-panel hidden p-6">
+    {% if r.signature_matches %}
+    {% set sig = r.signature_matches[0] %}
+    <div class="flex items-start gap-6 mb-6">
+      <div class="bg-orange-50 border border-orange-200 rounded-xl p-6 flex-1 text-center">
+        <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Most Likely Tool</div>
+        <div class="text-3xl font-bold text-orange-600 mb-1">{{ sig.get('tool','Unknown') }}</div>
+        <div class="text-sm text-slate-500">{{ sig.get('algorithm','—') }}</div>
+      </div>
+      <div class="grid grid-cols-2 gap-4 flex-1">
+        <div class="bg-slate-50 rounded-lg p-4 border border-slate-100 text-center">
+          <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Passes</div>
+          <div class="text-2xl font-bold text-slate-800">{{ sig.get('pass_count', 0) }}</div>
+        </div>
+        <div class="bg-slate-50 rounded-lg p-4 border border-slate-100 text-center">
+          <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Confidence</div>
+          <div class="text-2xl font-bold text-blue-600">{{ "%.0f"|format(sig.get('confidence',0)*100) }}%</div>
+        </div>
+        {% if sig.get('runner_up') %}
+        <div class="col-span-2 bg-slate-50 rounded-lg p-3 border border-slate-100">
+          <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Runner-Up</div>
+          <div class="font-medium text-slate-700">{{ sig.runner_up }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if sig.get('evidence') %}
+    <h3 class="text-sm font-semibold text-slate-700 mb-3">Signature Evidence</h3>
+    <div class="space-y-2 mb-6">
+      {% for ev in sig.evidence %}
+      <div class="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+        <span class="text-blue-500">›</span> {{ ev }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% set incomplete = sig.get('incomplete_wipe', {}) %}
+    {% if incomplete.get('has_incomplete_wipe') %}
+    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+      <div class="flex items-center gap-2 mb-1">
+        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <span class="text-sm font-semibold text-amber-700">Incomplete Wipe Detected</span>
+      </div>
+      <p class="text-sm text-amber-600">{{ incomplete.risk_note }}</p>
+      <div class="text-xs text-amber-500 mt-1">
+        {{ incomplete.intact_cluster_count }} intact clusters ({{ "%.1f"|format(incomplete.intact_fraction*100) }}%)
+      </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="p-12 text-center text-slate-400 text-sm">No significant wipe tool signatures detected.</div>
+    {% endif %}
+  </div>
+
+  <!-- Tab: Full Report -->
+  <div id="tab-report" class="tab-panel hidden p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-sm font-semibold text-slate-700">Forensic Report Preview</h3>
+      <div class="flex gap-2">
+        <a href="/api/report/{{ scan_id }}/json"
+           class="text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
+          ↓ JSON
+        </a>
+        <a href="/api/report/{{ scan_id }}/markdown"
+           class="text-xs font-medium text-slate-600 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors">
+          ↓ Markdown
+        </a>
+      </div>
+    </div>
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 max-h-[600px] overflow-y-auto scrollbar-thin">
+      <pre class="text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed" id="report-preview">Loading...</pre>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const SCAN_ID = '{{ scan_id }}';
+
+function switchTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.remove('text-blue-600', 'border-blue-600');
+    b.classList.add('text-slate-500', 'border-transparent');
+  });
+  document.getElementById('tab-' + id).classList.remove('hidden');
+  const btn = document.getElementById('tab-btn-' + id);
+  btn.classList.remove('text-slate-500', 'border-transparent');
+  btn.classList.add('text-blue-600', 'border-blue-600');
+
+  if (id === 'report') loadReportPreview();
+}
+
+function toggleDlMenu() {
+  document.getElementById('dl-menu').classList.toggle('hidden');
+}
+document.addEventListener('click', e => {
+  if (!document.getElementById('dl-menu-container').contains(e.target))
+    document.getElementById('dl-menu').classList.add('hidden');
+});
+
+async function loadReportPreview() {
+  const el = document.getElementById('report-preview');
+  if (el.textContent !== 'Loading...') return;
+  try {
+    const res = await fetch(`/api/results/${SCAN_ID}`);
+    const data = await res.json();
+    el.textContent = JSON.stringify(data, null, 2);
+  } catch(e) { el.textContent = 'Failed to load report.'; }
+}
+</script>
+{% endblock %}

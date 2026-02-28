@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}ISEA — Forensic Analyzer{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          colors: {
+            brand: { 50:'#eff6ff', 100:'#dbeafe', 500:'#3b82f6', 600:'#2563eb', 700:'#1d4ed8' }
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: #f1f5f9; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .animate-pulse-dot { animation: pulse-dot 1.2s ease-in-out infinite; }
+    @keyframes slide-in { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+    .animate-slide-in { animation: slide-in 0.25s ease-out; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+  <!-- Navigation -->
+  <nav class="bg-white border-b border-slate-200 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+      <!-- Logo -->
+      <a href="/" class="flex items-center gap-2.5 group">
+        <div class="bg-blue-600 rounded-lg p-1.5 group-hover:bg-blue-700 transition-colors">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04
+                 A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622
+                 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-lg font-bold text-slate-800 tracking-tight">ISEA</span>
+          <span class="text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+            FORENSIC
+          </span>
+        </div>
+      </a>
+
+      <!-- Nav links -->
+      <div class="flex items-center gap-6 text-sm">
+        <a href="/" class="text-slate-500 hover:text-slate-800 transition-colors font-medium">Dashboard</a>
+        <span class="text-slate-200">|</span>
+        <span class="text-slate-400 text-xs">Intelligent Storage Evidence Analyzer v1.0</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <main class="max-w-7xl mx-auto px-6 py-8">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-200 bg-white mt-16">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between text-xs text-slate-400">
+      <span>ISEA — Intelligent Storage Evidence Analyzer · AI-powered forensic wipe detection</span>
+      <span>Powered by Groq · LLaMA 3.3 70B</span>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+
+{% block title %}ISEA — Forensic Dashboard{% endblock %}
+
+{% block content %}
+
+<!-- Page header -->
+<div class="mb-8">
+  <h1 class="text-2xl font-bold text-slate-800">Forensic Analysis Dashboard</h1>
+  <p class="text-slate-500 mt-1">Upload a disk image to detect wipe patterns, classify attacker tools, and analyze intent.</p>
+</div>
+
+<!-- Stats row -->
+<div class="grid grid-cols-3 gap-4 mb-8">
+  <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs font-medium text-slate-500 uppercase tracking-wide">Total Scans</span>
+      <div class="bg-blue-50 p-1.5 rounded-lg">
+        <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+      </div>
+    </div>
+    <div class="text-3xl font-bold text-slate-800">{{ total_scans }}</div>
+  </div>
+  <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs font-medium text-slate-500 uppercase tracking-wide">Wipe Regions Found</span>
+      <div class="bg-red-50 p-1.5 rounded-lg">
+        <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+      </div>
+    </div>
+    <div class="text-3xl font-bold text-slate-800">{{ total_wipe_regions }}</div>
+  </div>
+  <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs font-medium text-slate-500 uppercase tracking-wide">Avg Evidence Score</span>
+      <div class="bg-amber-50 p-1.5 rounded-lg">
+        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+      </div>
+    </div>
+    <div class="text-3xl font-bold text-slate-800">{{ avg_score }}<span class="text-lg text-slate-400">/100</span></div>
+  </div>
+</div>
+
+<!-- Upload zone -->
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm mb-8">
+  <div class="p-6 border-b border-slate-100">
+    <h2 class="font-semibold text-slate-700">New Analysis</h2>
+    <p class="text-sm text-slate-500 mt-0.5">Upload a raw disk image to begin forensic analysis.</p>
+  </div>
+  <div class="p-6">
+    <div id="upload-zone"
+         class="border-2 border-dashed border-slate-300 rounded-xl p-12 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all group"
+         onclick="document.getElementById('file-input').click()"
+         ondragover="handleDragOver(event)"
+         ondrop="handleDrop(event)">
+      <div class="flex flex-col items-center">
+        <div class="bg-slate-100 group-hover:bg-blue-100 transition-colors p-4 rounded-full mb-4">
+          <svg class="w-8 h-8 text-slate-400 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+        </div>
+        <p id="upload-label" class="text-slate-700 font-medium mb-1">Drop disk image here or click to browse</p>
+        <p class="text-slate-400 text-sm">Supports .dd · .img · .raw · .bin</p>
+        <input type="file" id="file-input" class="hidden" accept=".dd,.img,.raw,.bin" onchange="handleFileSelect(event)" />
+      </div>
+    </div>
+
+    <!-- Options row -->
+    <div class="flex items-center gap-6 mt-5 pt-5 border-t border-slate-100">
+      <div class="flex items-center gap-2">
+        <label class="text-sm font-medium text-slate-600">Cluster Size</label>
+        <select id="cluster-size" class="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="512">512 B</option>
+          <option value="1024">1 KB</option>
+          <option value="2048">2 KB</option>
+          <option value="4096" selected>4 KB (default)</option>
+          <option value="8192">8 KB</option>
+          <option value="16384">16 KB</option>
+        </select>
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="text-sm font-medium text-slate-600">Scan Mode</label>
+        <select id="scan-step" class="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="1" selected>Thorough (every cluster)</option>
+          <option value="2">Balanced (every 2nd)</option>
+          <option value="4">Quick (every 4th)</option>
+          <option value="8">Fast (every 8th)</option>
+        </select>
+      </div>
+      <button id="analyze-btn" onclick="startAnalysis()"
+        class="ml-auto bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-5 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        disabled>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        Start Analysis
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Recent scans -->
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+  <div class="p-5 border-b border-slate-100 flex items-center justify-between">
+    <h2 class="font-semibold text-slate-700">Recent Scans</h2>
+    <span class="text-xs text-slate-400">{{ recent_scans|length }} scan(s) this session</span>
+  </div>
+  {% if recent_scans %}
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="bg-slate-50 text-slate-500 text-xs font-medium uppercase tracking-wide">
+          <th class="text-left px-5 py-3">Image</th>
+          <th class="text-left px-5 py-3">Size</th>
+          <th class="text-left px-5 py-3">Date</th>
+          <th class="text-center px-5 py-3">Evidence Score</th>
+          <th class="text-center px-5 py-3">Risk</th>
+          <th class="text-center px-5 py-3">Wipe Regions</th>
+          <th class="text-right px-5 py-3">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for scan in recent_scans %}
+        <tr class="border-t border-slate-100 hover:bg-slate-50/50 transition-colors">
+          <td class="px-5 py-3.5">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <span class="font-medium text-slate-700 truncate max-w-[180px]">{{ scan.filename }}</span>
+            </div>
+          </td>
+          <td class="px-5 py-3.5 text-slate-500">{{ scan.size_mb }} MB</td>
+          <td class="px-5 py-3.5 text-slate-500">{{ scan.date }}</td>
+          <td class="px-5 py-3.5 text-center">
+            <span class="font-semibold
+              {% if scan.evidence_score >= 75 %}text-red-600
+              {% elif scan.evidence_score >= 50 %}text-orange-500
+              {% elif scan.evidence_score >= 25 %}text-amber-500
+              {% else %}text-green-600{% endif %}">
+              {{ scan.evidence_score }}/100
+            </span>
+          </td>
+          <td class="px-5 py-3.5 text-center">
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+              {% if scan.risk_level == 'CRITICAL' %}bg-red-100 text-red-700
+              {% elif scan.risk_level == 'PROBABLE' %}bg-orange-100 text-orange-700
+              {% elif scan.risk_level == 'POSSIBLE' %}bg-amber-100 text-amber-700
+              {% else %}bg-green-100 text-green-700{% endif %}">
+              {{ scan.risk_level }}
+            </span>
+          </td>
+          <td class="px-5 py-3.5 text-center font-medium text-slate-700">{{ scan.wipe_regions }}</td>
+          <td class="px-5 py-3.5 text-right">
+            <div class="flex items-center justify-end gap-2">
+              <a href="/results/{{ scan.scan_id }}"
+                 class="text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
+                Results
+              </a>
+              <a href="/chat/{{ scan.scan_id }}"
+                 class="text-xs font-medium text-slate-600 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors">
+                Ask AI
+              </a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="p-12 text-center">
+    <div class="text-slate-300 mb-3">
+      <svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+      </svg>
+    </div>
+    <p class="text-slate-400 text-sm">No scans yet. Upload a disk image to get started.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- How it works -->
+<div class="mt-12 grid grid-cols-4 gap-4">
+  {% for step_num, icon_path, title, desc in [
+    (1, "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12", "Upload Image", "Drag and drop a .dd, .img, or .raw disk image"),
+    (2, "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z", "Real-time Scan", "Watch entropy analysis and wipe detection live"),
+    (3, "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z", "AI Classification", "Tool fingerprinting and attacker intent profiling"),
+    (4, "M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z", "Evidence Report", "Court-ready JSON and Markdown forensic report")
+  ] %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    <div class="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-bold mb-3">
+      {{ step_num }}
+    </div>
+    <h3 class="font-semibold text-slate-700 mb-1">{{ title }}</h3>
+    <p class="text-slate-500 text-sm">{{ desc }}</p>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedFile = null;
+
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.add('border-blue-400', 'bg-blue-50');
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file) setFile(file);
+}
+
+function handleFileSelect(e) {
+  setFile(e.target.files[0]);
+}
+
+function setFile(file) {
+  selectedFile = file;
+  const mb = (file.size / 1024 / 1024).toFixed(2);
+  document.getElementById('upload-label').textContent = `${file.name} (${mb} MB)`;
+  document.getElementById('upload-zone').classList.add('border-blue-400', 'bg-blue-50');
+  document.getElementById('analyze-btn').disabled = false;
+}
+
+async function startAnalysis() {
+  if (!selectedFile) return;
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  btn.innerHTML = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+  </svg> Uploading...`;
+
+  const formData = new FormData();
+  formData.append('file', selectedFile);
+  formData.append('cluster_size', document.getElementById('cluster-size').value);
+  formData.append('step', document.getElementById('scan-step').value);
+
+  const res = await fetch('/api/upload', { method: 'POST', body: formData });
+  const data = await res.json();
+  if (data.scan_id) {
+    window.location.href = `/scan/${data.scan_id}`;
+  } else {
+    btn.disabled = false;
+    btn.textContent = 'Start Analysis';
+    alert('Upload failed: ' + JSON.stringify(data));
+  }
+}
+</script>
+{% endblock %}

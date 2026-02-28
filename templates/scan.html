@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+
+{% block title %}Scanning — {{ filename }}{% endblock %}
+
+{% block content %}
+
+<!-- Header -->
+<div class="mb-6 flex items-center justify-between">
+  <div>
+    <div class="flex items-center gap-2 text-sm text-slate-500 mb-1">
+      <a href="/" class="hover:text-blue-600">Dashboard</a>
+      <span>›</span>
+      <span>Scanning</span>
+    </div>
+    <h1 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+      <span id="status-dot" class="w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse-dot"></span>
+      Analyzing <span class="text-blue-600 font-mono text-lg">{{ filename }}</span>
+    </h1>
+  </div>
+  <div id="status-badge"
+    class="bg-blue-100 text-blue-700 text-sm font-medium px-3 py-1.5 rounded-full flex items-center gap-1.5">
+    <span class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse-dot"></span>
+    Initializing...
+  </div>
+</div>
+
+<!-- Progress bar -->
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-6">
+  <div class="flex items-center justify-between mb-2">
+    <span class="text-sm font-medium text-slate-700">Scan Progress</span>
+    <span id="progress-text" class="text-sm font-semibold text-blue-600">0%</span>
+  </div>
+  <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+    <div id="progress-bar"
+      class="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300 ease-out"
+      style="width:0%"></div>
+  </div>
+  <div class="flex items-center justify-between mt-2 text-xs text-slate-400">
+    <span id="cluster-counter">0 / — clusters</span>
+    <span id="eta-text">Calculating...</span>
+  </div>
+</div>
+
+<!-- Live metrics + chart row -->
+<div class="grid grid-cols-12 gap-4 mb-6">
+
+  <!-- Metric cards -->
+  <div class="col-span-8 grid grid-cols-4 gap-4">
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Entropy (current)</div>
+      <div id="live-entropy" class="text-2xl font-bold text-slate-800">—</div>
+      <div class="text-xs text-slate-400 mt-0.5">bits / byte</div>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Wipe Regions</div>
+      <div id="wipe-count" class="text-2xl font-bold text-red-600">0</div>
+      <div class="text-xs text-slate-400 mt-0.5">detected</div>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Secure Erase</div>
+      <div id="secure-count" class="text-2xl font-bold text-orange-500">0</div>
+      <div class="text-xs text-slate-400 mt-0.5">clusters</div>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Natural Data</div>
+      <div id="natural-count" class="text-2xl font-bold text-green-600">0</div>
+      <div class="text-xs text-slate-400 mt-0.5">clusters</div>
+    </div>
+  </div>
+
+  <!-- Classification chart -->
+  <div class="col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+    <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Classification</div>
+    <div class="relative flex items-center justify-center" style="height:120px">
+      <canvas id="class-chart"></canvas>
+      <div class="absolute text-center pointer-events-none">
+        <div id="chart-center-label" class="text-xs font-medium text-slate-500">Live</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Activity log + wipe alerts row -->
+<div class="grid grid-cols-2 gap-4">
+
+  <!-- Activity log -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+    <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+      <span class="text-sm font-semibold text-slate-700">Activity Log</span>
+      <span id="log-count" class="text-xs text-slate-400">0 events</span>
+    </div>
+    <div id="activity-log" class="h-64 overflow-y-auto scrollbar-thin p-3 space-y-1 font-mono text-xs">
+      <div class="text-slate-400">Waiting for scan to start...</div>
+    </div>
+  </div>
+
+  <!-- Wipe detections -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+    <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+      <span class="text-sm font-semibold text-slate-700">Wipe Detections</span>
+      <span id="det-count" class="text-xs text-slate-400">0 regions</span>
+    </div>
+    <div id="wipe-detections-list" class="h-64 overflow-y-auto scrollbar-thin p-3 space-y-2">
+      <div class="text-slate-400 text-xs">No wipe regions detected yet...</div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const SCAN_ID = '{{ scan_id }}';
+  let classChart = null;
+  let classData = { natural_residual: 0, os_clear: 0, intentional_wipe: 0, secure_erase: 0 };
+  let logEvents = 0;
+  let wipeDetections = 0;
+  let startTime = null;
+  let totalClusters = 0;
+
+  // Init chart
+  function initChart() {
+    const ctx = document.getElementById('class-chart').getContext('2d');
+    classChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Natural', 'OS Clear', 'Wipe', 'Secure Erase'],
+        datasets: [{
+          data: [1, 0, 0, 0],
+          backgroundColor: ['#22c55e', '#eab308', '#f97316', '#ef4444'],
+          borderWidth: 0,
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        cutout: '72%',
+        plugins: { legend: { display: false }, tooltip: { enabled: true } },
+        animation: { duration: 300 }
+      }
+    });
+  }
+
+  function updateChart() {
+    const d = classData;
+    classChart.data.datasets[0].data = [
+      d.natural_residual, d.os_clear, d.intentional_wipe, d.secure_erase
+    ];
+    classChart.update('none');
+  }
+
+  // Activity log
+  function addLog(msg, cls = 'text-slate-400') {
+    const log = document.getElementById('activity-log');
+    if (log.children[0]?.textContent === 'Waiting for scan to start...') log.innerHTML = '';
+    const ts = new Date().toLocaleTimeString('en', { hour12: false });
+    const el = document.createElement('div');
+    el.className = `${cls} animate-slide-in leading-5`;
+    el.textContent = `[${ts}] ${msg}`;
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+    logEvents++;
+    document.getElementById('log-count').textContent = `${logEvents} events`;
+  }
+
+  // Wipe detection card
+  function addWipeDetection(det) {
+    const list = document.getElementById('wipe-detections-list');
+    if (list.children[0]?.textContent === 'No wipe regions detected yet...') list.innerHTML = '';
+    const conf = Math.round((det.confidence || 0) * 100);
+    const el = document.createElement('div');
+    el.className = 'bg-red-50 border border-red-200 rounded-lg p-3 animate-slide-in';
+    el.innerHTML = `
+    <div class="flex items-center justify-between mb-1">
+      <span class="text-xs font-semibold text-red-700">${det.tool_match || 'Unknown Tool'}</span>
+      <span class="text-xs font-medium text-red-600 bg-red-100 px-1.5 py-0.5 rounded">${conf}% conf</span>
+    </div>
+    <div class="text-xs text-slate-600">Clusters ${det.start_cluster}–${det.end_cluster} (${det.cluster_count})</div>
+    <div class="text-xs text-slate-500 mt-0.5">${det.algorithm || '—'} · ${det.pass_count} pass(es) · entropy ${(det.mean_entropy || 0).toFixed(2)}</div>
+  `;
+    list.appendChild(el);
+    list.scrollTop = list.scrollHeight;
+    wipeDetections++;
+    document.getElementById('det-count').textContent = `${wipeDetections} region${wipeDetections !== 1 ? 's' : ''}`;
+    document.getElementById('wipe-count').textContent = wipeDetections;
+  }
+
+  // Progress update
+  function updateProgress(current, total, pct) {
+    if (!startTime) startTime = Date.now();
+    if (!totalClusters && total) totalClusters = total;
+    document.getElementById('progress-bar').style.width = pct + '%';
+    document.getElementById('progress-text').textContent = pct.toFixed(1) + '%';
+    document.getElementById('cluster-counter').textContent = `${current.toLocaleString()} / ${(total || '?').toLocaleString()} clusters`;
+    if (current > 0 && total > 0) {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const rate = current / elapsed;
+      const remaining = (total - current) / rate;
+      document.getElementById('eta-text').textContent = remaining < 60
+        ? `~${Math.round(remaining)}s remaining`
+        : `~${Math.round(remaining / 60)}m remaining`;
+    }
+  }
+
+  // SSE-based scan streaming (EventSource works through all HTTP proxies)
+  let _scanDone = false;
+  let _es = null;
+
+  function handleMessage(msg) {
+    if (msg.type === 'started') {
+      totalClusters = msg.total_clusters;
+      document.getElementById('status-badge').innerHTML = `
+      <span class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse-dot"></span> Scanning...`;
+      addLog(`Image: ${msg.filename} · ${msg.size_mb} MB · ${msg.total_clusters.toLocaleString()} clusters`, 'text-slate-600');
+      addLog(`Mode: cluster_size=${msg.cluster_size}B · step=${msg.step}`, 'text-slate-400');
+    }
+
+    else if (msg.type === 'progress') {
+      updateProgress(msg.current, msg.total, msg.pct);
+    }
+
+    else if (msg.type === 'status') {
+      document.getElementById('status-badge').innerHTML = `
+      <span class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse-dot"></span> ${msg.message}`;
+      addLog(msg.message, 'text-blue-500');
+    }
+
+    else if (msg.type === 'cluster_batch') {
+      classData.natural_residual = msg.counts.natural_residual || 0;
+      classData.os_clear = msg.counts.os_clear || 0;
+      classData.intentional_wipe = msg.counts.intentional_wipe || 0;
+      classData.secure_erase = msg.counts.secure_erase || 0;
+      updateChart();
+      document.getElementById('live-entropy').textContent = msg.entropy.toFixed(3);
+      document.getElementById('secure-count').textContent = (msg.counts.secure_erase || 0).toLocaleString();
+      document.getElementById('natural-count').textContent = (msg.counts.natural_residual || 0).toLocaleString();
+
+      const wipes = (msg.counts.intentional_wipe || 0) + (msg.counts.secure_erase || 0);
+      if (wipes > 0 && wipes % 100 === 0) {
+        addLog(`⚠ ${wipes} wiped clusters detected so far`, 'text-orange-500');
+      }
+    }
+
+    else if (msg.type === 'wipe_detected') {
+      addLog(`⛔ WIPE REGION: ${msg.detection.tool_match} (clusters ${msg.detection.start_cluster}–${msg.detection.end_cluster})`, 'text-red-500 font-semibold');
+      addWipeDetection(msg.detection);
+    }
+
+    else if (msg.type === 'complete') {
+      _scanDone = true;
+      if (_es) { _es.close(); _es = null; }
+      const elapsed = startTime ? ((Date.now() - startTime) / 1000).toFixed(1) : '?';
+      updateProgress(totalClusters, totalClusters, 100);
+      document.getElementById('status-dot').className = 'w-2.5 h-2.5 bg-green-500 rounded-full';
+      document.getElementById('status-badge').innerHTML = `
+      <span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span> Complete`;
+      document.getElementById('status-badge').className = 'bg-green-100 text-green-700 text-sm font-medium px-3 py-1.5 rounded-full flex items-center gap-1.5';
+      addLog(`✓ Scan complete in ${elapsed}s — Evidence score: ${msg.evidence_score}/100`, 'text-green-600 font-semibold');
+      addLog(`→ Risk level: ${msg.risk_level} · Wipe regions: ${msg.wipe_count} · Tool: ${msg.tool}`, 'text-slate-600');
+      setTimeout(() => { window.location.href = msg.redirect_url; }, 1800);
+    }
+
+    else if (msg.type === 'error') {
+      if (_es) { _es.close(); _es = null; }
+      addLog(`✗ Error: ${msg.message}`, 'text-red-500');
+      document.getElementById('status-badge').innerHTML = `<span>Error</span>`;
+      document.getElementById('status-badge').className = 'bg-red-100 text-red-700 text-sm font-medium px-3 py-1.5 rounded-full';
+    }
+  }
+
+  let _retryCount = 0;
+
+  function connectSSE() {
+    const url = `/api/scan/${SCAN_ID}/stream`;
+
+    // First verify the endpoint exists before using EventSource
+    fetch(url, { method: 'HEAD' }).then(r => {
+      if (r.status === 404) {
+        addLog(`✗ Error: Scan session not found (scan_id=${SCAN_ID}). Please upload again.`, 'text-red-500');
+        return;
+      }
+      startEventSource(url);
+    }).catch(() => {
+      addLog('✗ Cannot reach server. Is the server running?', 'text-red-500');
+    });
+  }
+
+  function startEventSource(url) {
+    _es = new EventSource(url);
+
+    _es.onopen = () => {
+      _retryCount = 0;
+      addLog('Connected to analysis engine', 'text-blue-500');
+    };
+
+    _es.onmessage = (e) => {
+      try { handleMessage(JSON.parse(e.data)); } catch (_) { }
+    };
+
+    _es.onerror = (e) => {
+      if (_scanDone) return;
+      _retryCount++;
+      if (_retryCount === 1) {
+        // Try a fetch to get the real HTTP error
+        fetch(url).then(r => {
+          if (!r.ok) {
+            r.text().then(body => {
+              addLog(`✗ Stream error (HTTP ${r.status}): ${body.slice(0, 120)}`, 'text-red-500');
+            });
+          } else {
+            addLog('Stream paused — reconnecting...', 'text-amber-500');
+          }
+        }).catch(() => {
+          addLog('Stream disconnected — retrying...', 'text-amber-500');
+        });
+      }
+      // EventSource reconnects automatically
+    };
+  }
+
+  initChart();
+  connectSSE();
+</script>
+{% endblock %}

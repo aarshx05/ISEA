@@ -1,0 +1,252 @@
+{
+  "version": "1.0.0",
+  "description": "Known wipe tool behavioral signatures for ISEA forensic classification",
+  "tools": [
+    {
+      "id": "dban",
+      "name": "DBAN",
+      "aliases": ["Darik's Boot and Nuke", "dban"],
+      "category": "bootable_wiper",
+      "description": "Bootable disk sanitization tool with multiple DoD algorithm support",
+      "algorithms": [
+        {
+          "name": "DoD_Short",
+          "passes": 3,
+          "sequence": [
+            {"type": "zero_fill",   "byte": "0x00", "entropy_range": [0.0, 0.05]},
+            {"type": "ff_fill",     "byte": "0xFF", "entropy_range": [0.0, 0.05]},
+            {"type": "random_fill", "byte": null,   "entropy_range": [7.8, 8.0]}
+          ]
+        },
+        {
+          "name": "DoD_5220.22-M",
+          "passes": 7,
+          "sequence": [
+            {"type": "zero_fill",   "byte": "0x00"},
+            {"type": "ff_fill",     "byte": "0xFF"},
+            {"type": "random_fill", "byte": null},
+            {"type": "zero_fill",   "byte": "0x00"},
+            {"type": "ff_fill",     "byte": "0xFF"},
+            {"type": "random_fill", "byte": null},
+            {"type": "random_fill", "byte": null}
+          ]
+        },
+        {
+          "name": "Gutmann",
+          "passes": 35,
+          "sequence_note": "35-pass Gutmann method with specific byte patterns",
+          "final_entropy_range": [7.7, 8.0]
+        }
+      ],
+      "entropy_signature": {
+        "dominant_range": [7.7, 8.0],
+        "allows_uniform_fill": true,
+        "overwrite_consistency": [0.85, 1.0]
+      },
+      "indicators": [
+        "High entropy (>7.7) across contiguous clusters",
+        "Possible alternating zero/FF fills at start of sequence",
+        "Very consistent overwrite pattern across full disk"
+      ]
+    },
+    {
+      "id": "eraser",
+      "name": "Eraser",
+      "aliases": ["eraser", "eraser.exe"],
+      "category": "windows_tool",
+      "description": "Windows file/disk eraser with Gutmann and DoD algorithm support",
+      "algorithms": [
+        {
+          "name": "Gutmann_35",
+          "passes": 35,
+          "entropy_range": [7.6, 8.0]
+        },
+        {
+          "name": "DoD_5220.22-M",
+          "passes": 7,
+          "entropy_range": [7.0, 8.0]
+        },
+        {
+          "name": "Pseudorandom_Data",
+          "passes": 1,
+          "entropy_range": [7.8, 8.0]
+        }
+      ],
+      "entropy_signature": {
+        "dominant_range": [7.6, 8.0],
+        "allows_uniform_fill": false,
+        "overwrite_consistency": [0.80, 1.0]
+      },
+      "indicators": [
+        "High entropy random fill",
+        "Applied per-file or per-folder — selective targeting possible",
+        "May leave directory metadata intact"
+      ]
+    },
+    {
+      "id": "shred_gnu",
+      "name": "shred",
+      "aliases": ["shred", "GNU shred"],
+      "category": "unix_tool",
+      "description": "GNU coreutils shred — random passes then optional zero pass",
+      "algorithms": [
+        {
+          "name": "Default_3Pass",
+          "passes": 3,
+          "sequence": [
+            {"type": "random_fill"},
+            {"type": "random_fill"},
+            {"type": "random_fill"}
+          ],
+          "optional_zero_final": true
+        }
+      ],
+      "entropy_signature": {
+        "dominant_range": [7.7, 8.0],
+        "allows_uniform_fill": true,
+        "final_zero_possible": true,
+        "overwrite_consistency": [0.82, 1.0]
+      },
+      "indicators": [
+        "Near-perfect entropy across 3+ passes",
+        "Optional final zero fill (entropy drops to ~0.0 on last pass)",
+        "Applied per-file — may have cluster alignment artifacts"
+      ]
+    },
+    {
+      "id": "sdelete",
+      "name": "sdelete",
+      "aliases": ["sdelete.exe", "sysinternals sdelete"],
+      "category": "windows_tool",
+      "description": "Sysinternals SDelete — zero-fill overwrite of file content",
+      "algorithms": [
+        {
+          "name": "Zero_Fill",
+          "passes": 1,
+          "sequence": [
+            {"type": "zero_fill", "byte": "0x00", "entropy_range": [0.0, 0.05]}
+          ]
+        }
+      ],
+      "entropy_signature": {
+        "dominant_range": [0.0, 0.1],
+        "fill_byte": "0x00",
+        "allows_uniform_fill": true,
+        "overwrite_consistency": [0.90, 1.0]
+      },
+      "indicators": [
+        "Entropy near 0.0 across affected regions",
+        "Pure zero fill — very low byte variance",
+        "Windows NTFS MFT may still show file names"
+      ]
+    },
+    {
+      "id": "cipher_w",
+      "name": "cipher /W",
+      "aliases": ["cipher", "cipher.exe /W"],
+      "category": "windows_builtin",
+      "description": "Windows built-in cipher /W — 3-pass wipe of unallocated space",
+      "algorithms": [
+        {
+          "name": "ThreePass",
+          "passes": 3,
+          "sequence": [
+            {"type": "zero_fill",   "byte": "0x00", "entropy_range": [0.0, 0.05]},
+            {"type": "ff_fill",     "byte": "0xFF", "entropy_range": [0.0, 0.05]},
+            {"type": "random_fill", "byte": null,   "entropy_range": [7.8, 8.0]}
+          ]
+        }
+      ],
+      "entropy_signature": {
+        "dominant_range": [7.8, 8.0],
+        "allows_uniform_fill": true,
+        "overwrite_consistency": [0.88, 1.0]
+      },
+      "indicators": [
+        "Only targets unallocated space — allocated files untouched",
+        "Characteristic zero→FF→random sequence artifacts",
+        "High final entropy consistent with random pass"
+      ]
+    },
+    {
+      "id": "dd_zero",
+      "name": "dd if=/dev/zero",
+      "aliases": ["dd zero", "dd_zero"],
+      "category": "unix_tool",
+      "description": "Unix dd command writing from /dev/zero — pure zero fill",
+      "algorithms": [
+        {
+          "name": "Zero_Fill",
+          "passes": 1,
+          "sequence": [
+            {"type": "zero_fill", "byte": "0x00", "entropy_range": [0.0, 0.01]}
+          ]
+        }
+      ],
+      "entropy_signature": {
+        "dominant_range": [0.0, 0.05],
+        "fill_byte": "0x00",
+        "allows_uniform_fill": true,
+        "overwrite_consistency": [0.95, 1.0]
+      },
+      "indicators": [
+        "Entropy virtually 0.0 — perfect zero fill",
+        "May cover entire disk or specific partition",
+        "No file-level targeting — block-level operation"
+      ]
+    },
+    {
+      "id": "dd_urandom",
+      "name": "dd if=/dev/urandom",
+      "aliases": ["dd random", "dd_urandom"],
+      "category": "unix_tool",
+      "description": "Unix dd command writing from /dev/urandom — cryptographic random fill",
+      "algorithms": [
+        {
+          "name": "Random_Fill",
+          "passes": 1,
+          "sequence": [
+            {"type": "random_fill", "byte": null, "entropy_range": [7.9, 8.0]}
+          ]
+        }
+      ],
+      "entropy_signature": {
+        "dominant_range": [7.9, 8.0],
+        "allows_uniform_fill": false,
+        "overwrite_consistency": [0.92, 1.0]
+      },
+      "indicators": [
+        "Near-perfect entropy (7.9–8.0) — cryptographic random source",
+        "Extremely consistent across all clusters",
+        "Block-level — full disk or partition wipe"
+      ]
+    },
+    {
+      "id": "manual_zero",
+      "name": "Manual Zero Fill",
+      "aliases": ["python zero", "custom script"],
+      "category": "custom_script",
+      "description": "Custom script or code writing zeros — simple but effective",
+      "algorithms": [
+        {
+          "name": "Zero_Fill",
+          "passes": 1,
+          "sequence": [
+            {"type": "zero_fill", "byte": "0x00"}
+          ]
+        }
+      ],
+      "entropy_signature": {
+        "dominant_range": [0.0, 0.1],
+        "fill_byte": "0x00",
+        "allows_uniform_fill": true,
+        "overwrite_consistency": [0.85, 1.0]
+      },
+      "indicators": [
+        "Entropy near 0",
+        "May have irregular coverage if script was interrupted",
+        "Possible partial fills at file boundaries"
+      ]
+    }
+  ]
+}
