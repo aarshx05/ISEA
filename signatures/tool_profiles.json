@@ -247,6 +247,47 @@
         "May have irregular coverage if script was interrupted",
         "Possible partial fills at file boundaries"
       ]
+    },
+    {
+      "id": "veracrypt_hidden",
+      "name": "VeraCrypt Hidden Volume",
+      "aliases": ["TrueCrypt Hidden", "Hidden Encrypted Volume", "Plausible Deniability Volume"],
+      "category": "encryption",
+      "description": "Hidden encrypted volume created inside the free space of an outer VeraCrypt/TrueCrypt container. Uses AES-XTS or Twofish-XTS encryption, producing near-perfect byte distribution indistinguishable from random noise without the correct key.",
+      "algorithms": [
+        {
+          "name": "AES-XTS",
+          "passes": 1,
+          "entropy_range": [7.95, 8.0],
+          "note": "XTS mode produces sector-level encrypted blocks with near-perfect uniformity"
+        },
+        {
+          "name": "Twofish-XTS",
+          "passes": 1,
+          "entropy_range": [7.94, 8.0]
+        },
+        {
+          "name": "Serpent-XTS",
+          "passes": 1,
+          "entropy_range": [7.94, 8.0]
+        }
+      ],
+      "entropy_signature": {
+        "dominant_range": [7.85, 8.0],
+        "fill_byte": null,
+        "allows_uniform_fill": false,
+        "overwrite_consistency": 0.98,
+        "chi_square_threshold": 300,
+        "note": "Near-perfect byte distribution (chi-square < 300 per 4KB) distinguishes AES-XTS from PRNG-based wipers"
+      },
+      "indicators": [
+        "near_perfect_byte_distribution",
+        "sharp_entropy_boundary_with_outer_volume",
+        "in_outer_volume_free_space",
+        "no_filesystem_signature_in_hidden_region",
+        "outer_volume_has_plausible_filesystem",
+        "region_size_aligned_to_sector_boundaries"
+      ]
     }
   ]
 }

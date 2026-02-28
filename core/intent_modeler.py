@@ -14,6 +14,7 @@ Key questions answered:
 
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from config import SENSITIVE_DIR_PATTERNS
 
@@ -72,12 +73,14 @@ class IntentModeler:
         cluster_analyses: list[dict],
         wipe_detections: list[dict] | None = None,
         agent: Any | None = None,
+        hidden_volume_detections: list[dict] | None = None,
     ):
         self.fs_metadata = fs_metadata
         self.cluster_analyses = cluster_analyses
         self.wipe_detections = wipe_detections or []
         self._evidence: list[IntentEvidence] = []
         self.agent = agent
+        self.hidden_volume_detections = hidden_volume_detections or []
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -146,6 +149,39 @@ class IntentModeler:
                 category="intensity"
             ))
 
+        # Hidden encrypted volume evidence
+        if self.hidden_volume_detections:
+            high_conf_hv = [
+                h for h in self.hidden_volume_detections
+                if h.get("confidence", 0) >= 0.6
+            ]
+            if high_conf_hv:
+                best_hv = max(high_conf_hv, key=lambda h: h.get("confidence", 0))
+                self._evidence.append(IntentEvidence(
+                    description=(
+                        f"Hidden encrypted volume detected ({best_hv.get('tool_hint', 'Unknown')}, "
+                        f"{best_hv.get('confidence', 0):.0%} confidence) — "
+                        f"plausible deniability pattern consistent with deliberate data concealment"
+                    ),
+                    weight=0.45,
+                    confidence=best_hv.get("confidence", 0.6),
+                    category="encryption",
+                ))
+            elif self.hidden_volume_detections:
+                # Low-confidence candidates still worth noting
+                best_hv = max(self.hidden_volume_detections, key=lambda h: h.get("confidence", 0))
+                self._evidence.append(IntentEvidence(
+                    description=(
+                        f"Possible hidden encrypted volume region detected "
+                        f"({best_hv.get('tool_hint', 'Unknown')}, "
+                        f"{best_hv.get('confidence', 0):.0%} confidence) — "
+                        f"inconclusive, further analysis recommended"
+                    ),
+                    weight=0.15,
+                    confidence=best_hv.get("confidence", 0.35),
+                    category="encryption",
+                ))
+
         # Compute baseline algorithmic score
         raw_score = sum(e.weight * e.confidence for e in self._evidence)
         intent_score = round(min(raw_score * 100, 100.0), 1)
@@ -169,24 +205,55 @@ class IntentModeler:
                 "sensitive_targeted": bool(sensitive),
                 "wiped_clusters": sum(1 for a in self.cluster_analyses if a.get("classification") in ("intentional_wipe", "secure_erase")),
                 "total_clusters": len(self.cluster_analyses),
+                "hidden_volume_count": len(self.hidden_volume_detections),
+                "hidden_volume_max_confidence": max(
+                    (h.get("confidence", 0.0) for h in self.hidden_volume_detections),
+                    default=0.0,
+                ),
+                "hidden_volume_tool_hints": list({
+                    h.get("tool_hint", "Unknown")
+                    for h in self.hidden_volume_detections
+                }),
             }
             ai_assessment = self.agent.analyze_intent(crime_scene)
             
             if ai_assessment:
-                # Merge AI deductive reasoning
+                # Merge AI deductive reasoning — AI overrides rule-based values
                 intent_score = ai_assessment.get("score", intent_score)
                 hypothesis = ai_assessment.get("hypothesis", hypothesis)
                 confidence_tier = ai_assessment.get("confidence", confidence_tier)
                 risk_level = ai_assessment.get("risk_level", risk_level)
                 ai_questions = ai_assessment.get("investigator_questions", [])
-                
-                # Add a marker so the UI knows this is AI-generated
-                self._evidence.insert(0, IntentEvidence(
-                    description="AI Agentic Analysis applied to crime scene",
-                    weight=0.0,
-                    confidence=1.0,
-                    category="ai_inference"
-                ))
+
+                # Replace evidence_points with AI's traceable evidence_chain if provided.
+                # This shows the AI's step-by-step forensic reasoning in the Results page
+                # instead of the generic rule-based descriptions.
+                ai_evidence_chain = ai_assessment.get("evidence_chain", [])
+                if ai_evidence_chain:
+                    self._evidence = [
+                        IntentEvidence(
+                            description="[AI] " + step,
+                            weight=0.0,
+                            confidence=1.0,
+                            category="ai_inference",
+                        )
+                        for step in ai_evidence_chain
+                    ]
+                    # Prepend an AI analysis marker
+                    self._evidence.insert(0, IntentEvidence(
+                        description="AI forensic analysis applied — evidence chain below reflects AI deductive reasoning",
+                        weight=0.0,
+                        confidence=1.0,
+                        category="ai_inference",
+                    ))
+                else:
+                    # No evidence_chain from AI — keep rule-based evidence + add AI marker
+                    self._evidence.insert(0, IntentEvidence(
+                        description="AI Agentic Analysis applied to crime scene",
+                        weight=0.0,
+                        confidence=1.0,
+                        category="ai_inference",
+                    ))
 
         assessment = IntentAssessment(
             score=intent_score,

@@ -160,6 +160,62 @@ class SyntheticDiskFactory:
         natural = natural_text[:half]
         return wiped + natural
 
+    @staticmethod
+    def create_hidden_volume_image(size_mb: int = 4) -> bytes:
+        """
+        Simulate a VeraCrypt-style outer + hidden volume layout.
+
+        Layout (4 MB default):
+          - First 25%  (1 MB): FAT16 outer volume header + natural low-entropy data
+                                FAT boot sector magic (0x55 0xAA at offset 510) is
+                                present so _outer_fs_detected() fires.
+          - Middle 50% (2 MB): os.urandom() — simulates AES-XTS encrypted hidden volume.
+                                Near-perfect byte distribution → chi-square score low.
+                                Abrupt entropy boundary with the flanking natural data.
+          - Last 25%   (1 MB): Natural trailing data (low entropy text fill).
+                                Mirrors the outer volume's "remaining free space".
+
+        Expected detector output:
+          - ≥ 1 candidate with confidence > 0.55
+          - outer_fs_detected = True
+          - boundary_sharpness > 0.6
+          - tool_hint = "VeraCrypt" or "TrueCrypt / VeraCrypt"
+        """
+        total = size_mb * MB
+        quarter = total // 4
+
+        # --- Outer volume header (first quarter) ---
+        outer = bytearray(b'\x00' * quarter)
+        # FAT16 boot sector signature at bytes 510–511
+        outer[510] = 0x55
+        outer[511] = 0xAA
+        # FAT OEM ID at bytes 3–10 (typical FAT16 label)
+        outer[3:11] = b'FAT16   '
+        # Bytes per sector field (FAT BPB) at offset 11 — 512 LE
+        outer[11] = 0x00
+        outer[12] = 0x02
+        # Fill the rest with low-entropy repeating text data
+        fill_text = b"BACKUP_ARCHIVE_2024_VACATION_PHOTOS_FAMILY_RECORDS_TAX_DOCS_" * 20
+        chunk_start = 512
+        while chunk_start < quarter:
+            end = min(chunk_start + len(fill_text), quarter)
+            outer[chunk_start:end] = fill_text[:end - chunk_start]
+            chunk_start = end
+
+        # --- Hidden volume (middle two quarters = half total) ---
+        hidden = os.urandom(quarter * 2)
+
+        # --- Trailing outer volume free space (last quarter) ---
+        tail_text = b"DOCUMENTS_WORK_PROJECTS_NOTES_MEETINGS_REPORTS_INVOICES_" * 20
+        tail = bytearray(quarter)
+        chunk_start = 0
+        while chunk_start < quarter:
+            end = min(chunk_start + len(tail_text), quarter)
+            tail[chunk_start:end] = tail_text[:end - chunk_start]
+            chunk_start = end
+
+        return bytes(outer) + hidden + bytes(tail)
+
     # ------------------------------------------------------------------ #
     # File persistence helpers
     # ------------------------------------------------------------------ #
@@ -185,6 +241,7 @@ class SyntheticDiskFactory:
             "selective_wipe":  self.create_selective_wipe_image(4),
             "realistic":       self.create_realistic_image(4),
             "incomplete_wipe": self.create_incomplete_wipe_image(2),
+            "hidden_volume":   self.create_hidden_volume_image(4),
         }
         paths = {}
         for name, data in fixtures.items():

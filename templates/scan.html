@@ -254,16 +254,24 @@
       const el = document.createElement('div');
       const uniqueId = 'hitl-' + Date.now();
 
+      // Render "Why I'm asking" reasoning sub-text if the agent provided it
+      const reasoningHtml = msg.reasoning
+        ? `<p class="text-xs text-amber-700 bg-amber-100 rounded px-2 py-1.5 mt-1 mb-3 leading-relaxed">
+             <span class="font-semibold">Why I'm asking:</span> ${msg.reasoning}
+           </p>`
+        : '<div class="mb-3"></div>';
+
       el.className = 'my-2 bg-amber-50 border border-amber-200 rounded-lg p-3 animate-slide-in';
       el.innerHTML = `
         <div class="flex items-center gap-2 mb-2 text-amber-800 font-semibold text-sm">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-          Clarification Required
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          AI Analyst — Clarification Required
         </div>
-        <p class="text-sm text-slate-700 mb-3">${msg.question}</p>
+        <p class="text-sm font-medium text-slate-800">${msg.question}</p>
+        ${reasoningHtml}
         <div class="flex gap-2">
-          <input type="text" id="${uniqueId}" class="flex-1 text-sm border-slate-300 rounded px-3 py-1.5 focus:ring-blue-500 focus:border-blue-500" placeholder="Type your answer here..." onkeydown="if(event.key === 'Enter') submitAgentAnswer('${uniqueId}')">
-          <button id="btn-${uniqueId}" onclick="submitAgentAnswer('${uniqueId}')" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded text-sm font-medium transition-colors cursor-pointer">Reply</button>
+          <input type="text" id="${uniqueId}" class="flex-1 text-sm border border-amber-300 bg-white rounded px-3 py-1.5 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none" placeholder="Your answer..." onkeydown="if(event.key === 'Enter') submitAgentAnswer('${uniqueId}')">
+          <button id="btn-${uniqueId}" onclick="submitAgentAnswer('${uniqueId}')" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded text-sm font-medium transition-colors cursor-pointer whitespace-nowrap">Reply →</button>
         </div>
       `;
       log.appendChild(el);

@@ -10,7 +10,9 @@
       "Bash(\"C:/Users/Aarsh/AppData/Local/Python/pythoncore-3.14-64/python.exe\" -m pytest tests/ -q)",
       "mcp__Claude_Preview__preview_start",
       "Bash(netstat -ano)",
-      "Bash(kill 24856)"
+      "Bash(kill 24856)",
+      "Bash(python -c \":*)",
+      "Bash(findstr /n \"question\\\\|thought\\\\|callback\\\\|agent\" \"C:\\\\Users\\\\Aarsh\\\\Documents\\\\Aarsh - Personal\\\\ISEA\\\\server.py\")"
     ]
   }
 }

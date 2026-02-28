@@ -166,6 +166,33 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "detect_hidden_encrypted_volumes",
+            "description": (
+                "Return analysis of high-entropy unallocated regions suspected to contain "
+                "hidden encrypted volumes (VeraCrypt, TrueCrypt, BitLocker). "
+                "Uses chi-square byte uniformity testing, entropy boundary sharpness analysis, "
+                "and outer filesystem detection to distinguish encryption from random-fill wipe tools. "
+                "Use this when investigating plausible deniability, data concealment, or when "
+                "high-entropy regions exist but no wipe tool was clearly identified."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "min_confidence": {
+                        "type": "number",
+                        "description": (
+                            "Minimum confidence threshold 0.0–1.0 for returned candidates. "
+                            "Default 0.4. Use 0.6 for high-confidence results only."
+                        ),
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
 ]
 
 
@@ -186,14 +213,15 @@ class ToolExecutor:
     def execute(self, tool_name: str, arguments: dict) -> dict:
         """Dispatch tool call to the appropriate handler."""
         handlers = {
-            "get_scan_summary":            self._get_scan_summary,
-            "analyze_disk_region":         self._analyze_disk_region,
-            "get_wipe_detections":         self._get_wipe_detections,
-            "get_wipe_signature_match":    self._get_wipe_signature_match,
-            "get_intent_assessment":       self._get_intent_assessment,
-            "get_directory_analysis":      self._get_directory_analysis,
-            "get_evidence_score_breakdown": self._get_evidence_score_breakdown,
-            "generate_evidence_report":    self._generate_evidence_report,
+            "get_scan_summary":                  self._get_scan_summary,
+            "analyze_disk_region":               self._analyze_disk_region,
+            "get_wipe_detections":               self._get_wipe_detections,
+            "get_wipe_signature_match":          self._get_wipe_signature_match,
+            "get_intent_assessment":             self._get_intent_assessment,
+            "get_directory_analysis":            self._get_directory_analysis,
+            "get_evidence_score_breakdown":      self._get_evidence_score_breakdown,
+            "generate_evidence_report":          self._generate_evidence_report,
+            "detect_hidden_encrypted_volumes":   self._detect_hidden_encrypted_volumes,
         }
         handler = handlers.get(tool_name)
         if not handler:
@@ -325,4 +353,57 @@ class ToolExecutor:
             "json_report": str(json_path.resolve()),
             "markdown_report": str(md_path.resolve()),
             "evidence_strength": generator.evidence_strength_rating(),
+        }
+
+    def _detect_hidden_encrypted_volumes(self, min_confidence: float = 0.4) -> dict:
+        """
+        Return hidden encrypted volume candidates from the scan result,
+        filtered by minimum confidence threshold.
+        """
+        hvs = self._result.hidden_volume_detections or []
+
+        filtered = []
+        for h in hvs:
+            conf = h.confidence if hasattr(h, "confidence") else h.get("confidence", 0.0)
+            if conf >= min_confidence:
+                filtered.append(h.to_dict() if hasattr(h, "to_dict") else h)
+
+        all_confs = [
+            (h.confidence if hasattr(h, "confidence") else h.get("confidence", 0.0))
+            for h in hvs
+        ]
+        highest = max(all_confs, default=0.0)
+        plausible_deniability_risk = any(c >= 0.7 for c in all_confs)
+
+        if not filtered:
+            return {
+                "count": 0,
+                "candidates": [],
+                "highest_confidence": round(highest, 4),
+                "plausible_deniability_risk": plausible_deniability_risk,
+                "summary": "No hidden encrypted volume candidates detected above the confidence threshold.",
+            }
+
+        # Build a human-readable summary
+        tool_hints = list({
+            (h.get("tool_hint", "Unknown") if isinstance(h, dict) else h.get("tool_hint", "Unknown"))
+            for h in filtered
+        })
+        summary = (
+            f"Detected {len(filtered)} hidden encrypted volume candidate(s). "
+            f"Suspected tool(s): {', '.join(tool_hints)}. "
+            f"Highest confidence: {highest * 100:.1f}%. "
+        )
+        if plausible_deniability_risk:
+            summary += (
+                "PLAUSIBLE DENIABILITY RISK DETECTED — a VeraCrypt-style outer volume "
+                "may be concealing encrypted data from investigators."
+            )
+
+        return {
+            "count": len(filtered),
+            "candidates": filtered,
+            "highest_confidence": round(highest, 4),
+            "plausible_deniability_risk": plausible_deniability_risk,
+            "summary": summary,
         }

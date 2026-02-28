@@ -188,7 +188,7 @@
   <!-- Tab bar -->
   <div class="flex border-b border-slate-200 overflow-x-auto">
     {% for tab_id, tab_label in [('overview','Overview'), ('wipe-regions','Wipe Regions'), ('intent','Intent Analysis'),
-    ('tool','Tool Classification'), ('report','Full Report')] %}
+    ('tool','Tool Classification'), ('hidden-volumes','Hidden Volumes'), ('report','Full Report')] %}
     <button onclick="switchTab('{{ tab_id }}')" id="tab-btn-{{ tab_id }}"
       class="tab-btn px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors
         {% if loop.first %}text-blue-600 border-blue-600{% else %}text-slate-500 border-transparent hover:text-slate-700{% endif %}">
@@ -424,6 +424,73 @@
     {% endif %}
   </div>
 
+  <!-- Tab: Hidden Volumes -->
+  <div id="tab-hidden-volumes" class="tab-panel hidden p-6">
+    <div id="hv-alert-banner" class="hidden mb-4 flex items-start gap-3 bg-purple-50 border border-purple-200 rounded-xl p-4">
+      <svg class="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z"/>
+      </svg>
+      <div>
+        <p class="text-sm font-semibold text-purple-800" id="hv-alert-title">Plausible Deniability Risk Detected</p>
+        <p class="text-xs text-purple-600 mt-0.5" id="hv-alert-body"></p>
+      </div>
+    </div>
+
+    <div id="hv-empty" class="hidden p-12 text-center">
+      <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+        <svg class="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+        </svg>
+      </div>
+      <p class="text-slate-500 text-sm font-medium">No Hidden Encrypted Volumes Detected</p>
+      <p class="text-slate-400 text-xs mt-1">High-entropy regions in unallocated space were not detected, or confidence was below threshold.</p>
+    </div>
+
+    <div id="hv-table-wrapper" class="hidden">
+      <div class="mb-4">
+        <h3 class="text-sm font-semibold text-slate-700">Hidden Encrypted Volume Candidates</h3>
+        <p class="text-xs text-slate-500 mt-1">Regions scored by chi-square byte uniformity, entropy boundary sharpness, filesystem context, and unallocated space position.</p>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="bg-slate-50 border-b border-slate-200">
+              <th class="text-left px-3 py-2.5 font-semibold text-slate-600">Clusters</th>
+              <th class="text-left px-3 py-2.5 font-semibold text-slate-600">Size</th>
+              <th class="text-left px-3 py-2.5 font-semibold text-slate-600">Confidence</th>
+              <th class="text-left px-3 py-2.5 font-semibold text-slate-600">Mean Entropy</th>
+              <th class="text-left px-3 py-2.5 font-semibold text-slate-600">χ² Score</th>
+              <th class="text-left px-3 py-2.5 font-semibold text-slate-600">Boundary Sharpness</th>
+              <th class="text-left px-3 py-2.5 font-semibold text-slate-600">In Unalloc.</th>
+              <th class="text-left px-3 py-2.5 font-semibold text-slate-600">Outer FS</th>
+              <th class="text-left px-3 py-2.5 font-semibold text-slate-600">Tool Hint</th>
+            </tr>
+          </thead>
+          <tbody id="hv-tbody" class="divide-y divide-slate-100">
+            <!-- populated by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Signal legend -->
+      <div class="mt-5 p-4 bg-slate-50 rounded-lg border border-slate-200">
+        <p class="text-xs font-semibold text-slate-600 mb-2">Detection Signal Weights</p>
+        <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-slate-500">
+          <span>Outer filesystem detected &mdash; <strong>40%</strong></span>
+          <span>Region in unallocated space &mdash; <strong>25%</strong></span>
+          <span>Chi-square byte uniformity &mdash; <strong>20%</strong></span>
+          <span>Entropy boundary sharpness &mdash; <strong>15%</strong></span>
+        </div>
+        <p class="text-xs text-slate-400 mt-2">
+          Both AES-XTS encryption and <code>dd if=/dev/urandom</code> produce ~7.9 bits/byte entropy.
+          Disambiguation uses structural context, not entropy alone.
+        </p>
+      </div>
+    </div>
+  </div>
+
   <!-- Tab: Full Report -->
   <div id="tab-report" class="tab-panel hidden p-6">
     <div class="flex items-center justify-between mb-4">
@@ -464,6 +531,7 @@
     btn.classList.add('text-blue-600', 'border-blue-600');
 
     if (id === 'report') loadReportPreview();
+    if (id === 'hidden-volumes') loadHiddenVolumes();
   }
 
   function toggleDlMenu() {
@@ -483,5 +551,105 @@
       el.textContent = JSON.stringify(data, null, 2);
     } catch (e) { el.textContent = 'Failed to load report.'; }
   }
+
+  // ---- Hidden Volumes Tab ----
+  let _hvLoaded = false;
+
+  async function loadHiddenVolumes() {
+    if (_hvLoaded) return;
+    _hvLoaded = true;
+    try {
+      const res = await fetch(`/api/results/${SCAN_ID}`);
+      const data = await res.json();
+      renderHiddenVolumesTab(data.hidden_volume_detections || []);
+    } catch (e) {
+      document.getElementById('hv-empty').classList.remove('hidden');
+    }
+  }
+
+  function renderHiddenVolumesTab(hvs) {
+    const empty   = document.getElementById('hv-empty');
+    const wrapper = document.getElementById('hv-table-wrapper');
+    const alert   = document.getElementById('hv-alert-banner');
+    const tbody   = document.getElementById('hv-tbody');
+
+    if (!hvs || hvs.length === 0) {
+      empty.classList.remove('hidden');
+      return;
+    }
+
+    // Show alert if any candidate has confidence >= 0.7
+    const topConf = Math.max(...hvs.map(h => h.confidence || 0));
+    if (topConf >= 0.7) {
+      const tools = [...new Set(hvs.map(h => h.tool_hint || 'Unknown'))].join(', ');
+      document.getElementById('hv-alert-title').textContent = 'Plausible Deniability Risk Detected';
+      document.getElementById('hv-alert-body').textContent =
+        `${hvs.length} hidden encrypted volume candidate(s) detected. ` +
+        `Suspected tool: ${tools}. Highest confidence: ${(topConf * 100).toFixed(1)}%.`;
+      alert.classList.remove('hidden');
+    } else if (topConf >= 0.4) {
+      document.getElementById('hv-alert-title').textContent = 'Possible Encrypted Volume — Low Confidence';
+      document.getElementById('hv-alert-body').textContent =
+        `${hvs.length} candidate(s) detected but below high-confidence threshold. Further analysis recommended.`;
+      alert.classList.remove('hidden');
+      alert.classList.replace('bg-purple-50', 'bg-amber-50');
+      alert.classList.replace('border-purple-200', 'border-amber-200');
+      alert.querySelector('svg').classList.replace('text-purple-600', 'text-amber-600');
+      document.getElementById('hv-alert-title').classList.replace('text-purple-800', 'text-amber-800');
+      document.getElementById('hv-alert-body').classList.replace('text-purple-600', 'text-amber-600');
+    }
+
+    // Populate table
+    tbody.innerHTML = '';
+    hvs.forEach(h => {
+      const conf = (h.confidence || 0) * 100;
+      const confColor = conf >= 70 ? 'text-red-600 font-semibold' :
+                        conf >= 50 ? 'text-orange-600 font-semibold' :
+                        'text-amber-600';
+      const sizeKb = h.size_kb ? `${h.size_kb.toFixed(1)} KB` :
+                     h.size_bytes ? `${(h.size_bytes / 1024).toFixed(1)} KB` : '—';
+      const boolBadge = (v, trueLabel, falseLabel) => v
+        ? `<span class="px-1.5 py-0.5 rounded-full text-xs bg-green-100 text-green-700">${trueLabel}</span>`
+        : `<span class="px-1.5 py-0.5 rounded-full text-xs bg-slate-100 text-slate-500">${falseLabel}</span>`;
+
+      const row = document.createElement('tr');
+      row.className = 'hover:bg-slate-50 transition-colors';
+      row.innerHTML = `
+        <td class="px-3 py-2.5 font-mono text-slate-600">${h.start_cluster}–${h.end_cluster}</td>
+        <td class="px-3 py-2.5 text-slate-600">${sizeKb}</td>
+        <td class="px-3 py-2.5 ${confColor}">${conf.toFixed(1)}%</td>
+        <td class="px-3 py-2.5 text-slate-600">${(h.mean_entropy || 0).toFixed(3)}</td>
+        <td class="px-3 py-2.5 text-slate-600">${(h.chi_square_score || 0).toFixed(1)}</td>
+        <td class="px-3 py-2.5 text-slate-600">${((h.boundary_sharpness || 0) * 100).toFixed(1)}%</td>
+        <td class="px-3 py-2.5">${boolBadge(h.in_unallocated, 'Yes', 'No')}</td>
+        <td class="px-3 py-2.5">${boolBadge(h.outer_fs_detected, 'Yes', 'No')}</td>
+        <td class="px-3 py-2.5 text-slate-700 font-medium">${h.tool_hint || '—'}</td>
+      `;
+      tbody.appendChild(row);
+    });
+
+    wrapper.classList.remove('hidden');
+
+    // Update the tab button label with badge count
+    const tabBtn = document.getElementById('tab-btn-hidden-volumes');
+    if (tabBtn && hvs.length > 0) {
+      tabBtn.innerHTML = `Hidden Volumes <span class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">${hvs.length}</span>`;
+    }
+  }
+
+  // Pre-load HV data on page load so badge shows immediately
+  (async () => {
+    try {
+      const res = await fetch(`/api/results/${SCAN_ID}`);
+      const data = await res.json();
+      const hvs = data.hidden_volume_detections || [];
+      if (hvs.length > 0) {
+        const tabBtn = document.getElementById('tab-btn-hidden-volumes');
+        if (tabBtn) {
+          tabBtn.innerHTML = `Hidden Volumes <span class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">${hvs.length}</span>`;
+        }
+      }
+    } catch (e) { /* silent */ }
+  })();
 </script>
 {% endblock %}

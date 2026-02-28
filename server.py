@@ -270,27 +270,33 @@ async def scan_stream(scan_id: str, request: Request):
             _scan_history_logs[scan_id].append({"actor": "AI Analyst", "text": thought})
         event_queue.put({"type": "agent_thought", "thought": thought})
 
-    def on_agent_question(question: str) -> str:
+    def on_agent_question(question: str, reasoning: str = "") -> str:
         if scan_id in _scan_history_logs:
-            _scan_history_logs[scan_id].append({"actor": "AI Request", "text": question})
-            
-        # 1. Fire the question to the UI
-        event_queue.put({"type": "agent_question", "question": question})
-        
-        # 2. Prevent race conditions if multiple questions happen (unlikely in PipelineAgent but safe)
+            log_text = question
+            if reasoning:
+                log_text = f"{question} (Why: {reasoning})"
+            _scan_history_logs[scan_id].append({"actor": "AI Request", "text": log_text})
+
+        # 1. Fire the question (+ optional reasoning) to the UI
+        q_event: dict = {"type": "agent_question", "question": question}
+        if reasoning:
+            q_event["reasoning"] = reasoning
+        event_queue.put(q_event)
+
+        # 2. Prevent race conditions if multiple questions happen
         if scan_id not in _scan_events:
             _scan_events[scan_id] = threading.Event()
-            
+
         _scan_events[scan_id].clear()
-        
+
         # 3. Block this background thread until /api/scan/../answer sets the event
         _scan_events[scan_id].wait()
-        
+
         # 4. Thread unblocked: pop the answer
         answer = _scan_answers.pop(scan_id, "")
         if scan_id in _scan_history_logs:
             _scan_history_logs[scan_id].append({"actor": "Human Investigator", "text": answer})
-            
+
         return answer
 
     result_holder: list[ScanResult] = []

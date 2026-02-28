@@ -14,6 +14,7 @@ from pathlib import Path
 
 from core.disk_analyzer import DiskAnalyzer
 from core.entropy_engine import EntropyEngine
+from core.hidden_volume_detector import HiddenVolumeDetector
 from core.intent_modeler import IntentModeler
 from signatures.wipe_signatures import SignatureMatcher
 from agent.pipeline_agent import PipelineAgent
@@ -66,6 +67,7 @@ class ScanResult:
     cluster_analyses: list[dict] = field(default_factory=list)
     region_stats: dict = field(default_factory=dict)
     activity_log: list[dict] = field(default_factory=list)
+    hidden_volume_detections: list = field(default_factory=list)
     evidence_score: float = 0.0          # 0–100
     scan_duration_seconds: float = 0.0
     scan_step: int = 1                   # sampling step used
@@ -84,6 +86,10 @@ class ScanResult:
             "intent_assessment": self.intent_assessment,
             "region_stats": self.region_stats,
             "activity_log": self.activity_log,
+            "hidden_volume_detections": [
+                h.to_dict() if hasattr(h, "to_dict") else h
+                for h in self.hidden_volume_detections
+            ],
             "evidence_score": self.evidence_score,
             "scan_duration_seconds": round(self.scan_duration_seconds, 2),
             "scan_step": self.scan_step,
@@ -165,14 +171,34 @@ class ClusterScanner:
                     agent_thought_callback=self.agent_thought_callback,
                     agent_question_callback=self.agent_question_callback
                 )
-                intent = self._run_intent_model(fs_metadata, cluster_analyses, wipe_detections, agent)
+                intent = self._run_intent_model(
+                    fs_metadata, cluster_analyses, wipe_detections, agent, []
+                )
                 evidence_score = self._compute_evidence_score(
                     region_stats, intent, wipe_detections
                 )
                 d3 = time.time() - t3
 
+                # --- 4. Hidden Volume Detection ---
+                t4 = time.time()
+                hv_detector = HiddenVolumeDetector(
+                    cluster_analyses=cluster_analyses,
+                    fs_metadata=fs_metadata,
+                    image_path=self.image_path,
+                    cluster_size=self.cluster_size or 4096,
+                )
+                hidden_volumes = hv_detector.detect()
+                d4 = time.time() - t4
+
+                # Re-run intent model with hidden volume context if any detected
+                if hidden_volumes:
+                    intent = self._run_intent_model(
+                        fs_metadata, cluster_analyses, wipe_detections, agent, hidden_volumes
+                    )
+
                 print(f"[Profiling] {Path(self.image_path).name}: "
-                      f"Scan={d1:.2f}s, Post={d2:.2f}s, Intent={d3:.2f}s", file=sys.stderr)
+                      f"Scan={d1:.2f}s, Post={d2:.2f}s, Intent={d3:.2f}s, "
+                      f"HiddenVol={d4:.2f}s", file=sys.stderr)
 
             elapsed = time.time() - start_time
             return ScanResult(
@@ -186,6 +212,7 @@ class ClusterScanner:
                 intent_assessment=intent,
                 cluster_analyses=cluster_analyses,
                 region_stats=region_stats,
+                hidden_volume_detections=hidden_volumes,
                 evidence_score=evidence_score,
                 scan_duration_seconds=elapsed,
                 scan_step=step,
@@ -356,13 +383,19 @@ class ClusterScanner:
         cluster_analyses: list[dict],
         wipe_detections: list[WipeDetection],
         agent: PipelineAgent,
+        hidden_volume_detections: list | None = None,
     ) -> dict:
         wipe_dicts = [w.to_dict() for w in wipe_detections]
+        hv_dicts = [
+            h.to_dict() if hasattr(h, "to_dict") else h
+            for h in (hidden_volume_detections or [])
+        ]
         modeler = IntentModeler(
             fs_metadata=fs_metadata,
             cluster_analyses=cluster_analyses,
             wipe_detections=wipe_dicts,
             agent=agent,
+            hidden_volume_detections=hv_dicts,
         )
         return modeler.compute_intent_score()
 
