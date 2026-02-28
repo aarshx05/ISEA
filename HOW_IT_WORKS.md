@@ -73,26 +73,52 @@ Evidence Score = 40% × Intent Score
 
 ---
 
+---
+
+## The Interactive Scan Pipeline (Human-in-the-Loop)
+
+ISEA introduces a first-of-its-kind **Human-in-the-Loop (HITL)** forensic pipeline. Unlike traditional tools that scan first and analyze later, ISEA's AI Analyst is active *during* the scan and can interact with the human investigator to resolve ambiguities.
+
+### 1. Real-Time Thought Streaming
+As the `ClusterScanner` processes disk blocks, it invokes the `PipelineAgent`. 
+- The Agent's internal reasoning (the "Chain of Thought") is encapsulated in `<think>` tags.
+- Instead of being hidden, these thoughts are parsed on-the-fly and streamed via **Server-Sent Events (SSE)** to the browser.
+- Investigators can watch the AI's logic develop in real-time in the **Activity Log** as it detects wipe patterns and correlates them with filesystem metadata.
+
+### 2. Stateful Mid-Scan Pausing
+If the AI Analyst encounters a pattern that requires context (e.g., "Was this server scheduled for decommissioning?"), it triggers a `PipelinePause`:
+- **Thread Blocking**: The background scan thread is paused using a `threading.Event.wait()`.
+- **UI Interaction**: The Activity Log injects an interactive chat box into the UI.
+- **Context Injection**: The human investigator provides an answer, which is POSTed back to the server.
+- **Resumption**: The backend unblocks the thread, appends the human's answer to the AI's conversation history, and re-triggers the LLM to refine the hypothesis.
+
+### 3. Persistent Reasoning Logs
+Every step of the AI's reasoning, every question asked, and every human answer provided is persisted to the `ScanResult`. This is viewable on the final **Results Dashboard** under the **AI Analyst Thought Process** timeline, ensuring a complete and transparent audit trail for legal defensibility.
+
+---
+
 ## The Agentic AI Layer
 
 ### What "Agentic" Means Here
 
 Most forensic AI tools are wrappers — you paste a report in, they summarize it. ISEA's AI is different: it has **direct tool access** and reasons across evidence through multiple steps before answering.
 
-When you ask the AI analyst a question, it doesn't just generate text. It runs a loop:
+When you ask the AI analyst a question, or when it triggers a mid-scan clarification, it runs a loop:
 
 ```
-User question
+Evidence Fragment
      ↓
-Model selects a tool to call
+Model generates reasoning (<think>...)
      ↓
-Tool executes against the actual scan data
+Streamed Thoughts to UI Activity Log
      ↓
-Model receives results, decides: answer now or call another tool?
+Model decides: "Verdict" or "Question"?
      ↓
-Up to 6 iterations of tool use before final response
+If "Question" → Block thread → Await Human Answer → Loop
      ↓
-Streamed answer to the browser
+If "Verdict" → Generate IntentAssessment JSON
+     ↓
+Final Results Dashboard
 ```
 
 ### The 8 Forensic Tools

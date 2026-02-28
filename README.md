@@ -4,9 +4,13 @@
 
 ---
 
-## What It Does
+## Features
 
-ISEA analyzes raw disk images to detect deliberate data wiping, classify the tool used, and infer attacker intent. It moves beyond pattern detection into behavioral profiling — forming probabilistic hypotheses about evidence destruction that hold up in legal proceedings.
+- **Entropy-Based Detection**: Differentiates between natural file deletions and deliberate wiping using Shannon entropy physics.
+- **Tool Fingerprinting**: Identifies the specific tool used (DBAN, shred, sdelete, etc.) based on data pattern signatures.
+- **Interactive Scan Pipeline**: **[NEW]** The AI Analyst runs *during* the scan, streaming its real-time thought process into the UI.
+- **Human-in-the-Loop (HITL)**: **[NEW]** The Agent can pause the scan to ask the investigator for context, incorporating answers into its final verdict.
+- **Behavioral Intent Modeling**: Calculates a 0–100 Evidence Score based on wipe locality, temporal correlations, and sensitive directory targeting.
 
 ---
 
@@ -72,12 +76,19 @@ IntentModeler          SignatureMatcher
       │                       │
       └──────────┬────────────┘
                  ▼
-          ScanResult (dataclass)
+          PipelineAgent ◄─────┐
+     (Real-time Thoughts)     │
+                 │            │ (Human Answer)
+                 ▼            │
+      [ Interactive UI ] ─────┘
                  │
-       ┌─────────┴─────────┐
-       ▼                   ▼
-  ForensicAgent       ReportGenerator
-  (Groq API)          (JSON + Markdown)
+                 ▼
+           ScanResult (dataclass)
+                 │
+        ┌─────────┴─────────┐
+        ▼                   ▼
+   ForensicAgent       ReportGenerator
+   (Post-scan Q&A)     (JSON + Markdown)
        │
        ▼
   CLI (Rich terminal UI)
